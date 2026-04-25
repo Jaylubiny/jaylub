@@ -1,0 +1,90 @@
+{{define "head"}}
+<link rel="stylesheet" href="/web/static/css/allah.css">
+<script src="/web/static/js/allah.js" defer></script>
+{{end}}
+
+{{define "content"}}
+
+<div class="container">
+
+    <header class="hero">
+        <h1 class="logo">Allah Bot</h1>
+        <p class="subtitle">Discord bot for fun, voice, music and AI chat</p>
+    </header>
+
+    <section class="about">
+        <div class="about-text">
+            <h2>What is Allah?</h2>
+            <p>
+                Allah is a multi-purpose Discord bot built for entertainment, voice interaction,
+                music playback, and AI chatting. It connects to local AI models and supports
+                Czech language responses.
+            </p>
+        </div>
+
+        <div class="about-text">
+            <h2>Core Features</h2>
+            <p>
+                • Text commands<br>
+                • Voice TTS (speech synthesis)<br>
+                • YouTube music playback<br>
+                • AI chat via local LLM (LM Studio)<br>
+                • Voice channel interaction
+            </p>
+        </div>
+
+        <div class="about-text">
+            <h2>AI Personality</h2>
+            <p>
+                The bot uses a custom system prompt that makes it respond in Czech,
+                with short and direct sentences, simulating a local personality style.
+            </p>
+        </div>
+    </section>
+
+    <section class="cards">
+
+        <div class="card">
+            <h2>Commands</h2>
+            <p>
+                !cigi → replies "CIGI"<br>
+                napis [text] → sends message<br>
+                jaylub → sends GIF<br>
+                328 → owner-only script trigger
+            </p>
+        </div>
+
+        <div class="card">
+            <h2>Voice</h2>
+            <p>
+                rekni [text] → TTS speech in voice channel<br>
+                zahraj [query] → plays YouTube audio<br>
+                smrdcis → disconnect from voice
+            </p>
+        </div>
+
+        <div class="card">
+            <h2>AI Chat</h2>
+            <p>
+                allahu [prompt] → chat with local AI model (Gemma 3 4B)<br>
+                Responses are always in Czech language.
+            </p>
+        </div>
+
+    </section>
+
+    <section class="about">
+        <div class="about-text">
+            <h2>System Info</h2>
+            <p>
+                Built with discord.py, yt-dlp, gTTS and aiohttp.<br>
+                Uses LM Studio API for local LLM inference.<br>
+                Runs as a lightweight async Python service.
+            </p>
+        </div>
+    </section>
+
+
+</div>
+
+{{end}}

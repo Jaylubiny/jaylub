@@ -1,0 +1,38 @@
+{{define "head"}}
+<link rel="stylesheet" href="/web/static/css/wiki.css">
+<script src="/web/static/js/wiki.js" defer></script>
+{{end}}
+
+{{define "content"}}
+
+<div class="container">
+    <header class="hero">
+        <h1 class="logo">Wiki</h1>
+        <p class="tagline">
+            Knowledge, notes, and things worth remembering.
+        </p>
+    </header>
+
+    <section class="cards">
+        <a href="/wiki/jaylub" class="card link-card">
+            <h2>Jaylub</h2>
+            <p>The main entity, lore, and core ideas behind this world.</p>
+        </a>
+        <a href="/wiki/C" class="card link-card">
+            <h2>C programming language</h2>
+            <p>The C programming language is a general-purpose, procedural programming language.</p>
+        </a>
+    </section>
+
+    <section class="about">
+        <h2>What is the Wiki?</h2>
+        <p>
+            This section stores structured knowledge — from concepts and lore
+            to technical notes and ideas worth preserving.
+        </p>
+    </section>
+
+
+</div>
+
+{{end}}

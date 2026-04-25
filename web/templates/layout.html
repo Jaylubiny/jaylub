@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{{.Title}}</title>
+  <link rel="stylesheet" href="/web/static/css/layout.css" />
+  <script src="/web/static/js/layout.js" defer></script>
+  {{block "head" .}}{{end}}
+</head>
+
+<body>
+
+<div id="cursor"></div>
+
+<nav>
+  <a href="/">Home</a>
+  <a href="/about">About</a>
+  <a href="/contacts">Contacts</a>
+  <a href="/docs">Documentation</a>
+</nav>
+
+<main>
+  <div class="container">
+    {{template "content" .}}
+  </div>
+  <footer class="footer">
+    <p>© 2026 Jaylubiny</p>
+  </footer>
+</main>
+
+</body>
+</html>

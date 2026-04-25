@@ -1,0 +1,109 @@
+
+{{define "content"}}
+
+<div class="container">
+
+    <header class="hero">
+        <h1 class="logo">Jaylub Bot</h1>
+        <p class="subtitle">Discord bot for music, moderation, chaos & voice commands</p>
+    </header>
+
+    <section class="about">
+        <div class="about-text">
+            <h2>What is Jaylub?</h2>
+            <p>
+                Jaylub is a feature-packed Discord bot built with discord.js.
+                It supports music streaming, voice chat interaction, moderation tools,
+                AI integration and custom meme commands.
+            </p>
+        </div>
+
+        <div class="about-text">
+            <h2>Main Features</h2>
+            <p>
+                • SoundCloud & YouTube music playback<br>
+                • Voice channel control & streaming<br>
+                • Message moderation (kick, timeout, delete messages)<br>
+                • Custom meme responses (jaylub / holub system)<br>
+                • AI integration via OpenAI API<br>
+                • Discord RPC + presence customization
+            </p>
+        </div>
+
+        <div class="about-text">
+            <h2>Personality</h2>
+            <p>
+                Jaylube is designed to be chaotic, humorous, and aggressive in tone.
+                It responds differently based on user ID, creating personalized interactions
+                for specific users.
+            </p>
+        </div>
+    </section>
+
+    <section class="cards">
+
+        <div class="card">
+            <h2>Music System</h2>
+            <p>
+                jaylube zahraj [query] → plays SoundCloud/YouTube audio<br>
+                Supports streaming via discord voice channels<br>
+                Auto disconnect after track ends
+            </p>
+        </div>
+
+        <div class="card">
+            <h2>Moderation</h2>
+            <p>
+                jaylube kickni @user → kick member<br>
+                jaylube vysprchuj @user → timeout user<br>
+                jaylube smaz [number] → bulk delete messages
+            </p>
+        </div>
+
+        <div class="card">
+            <h2>Memes & Replies</h2>
+            <p>
+                jaylub → funny reply per user ID<br>
+                holub → alternative meme response<br>
+                hardcoded personality interactions
+            </p>
+        </div>
+
+    </section>
+
+    <section class="about">
+
+        <div class="about-text">
+            <h2>AI Integration</h2>
+            <p>
+                The bot can communicate with OpenAI API for advanced responses,
+                allowing intelligent chat-based interactions inside Discord.
+            </p>
+        </div>
+
+        <div class="about-text">
+            <h2>System Architecture</h2>
+            <p>
+                Built using Node.js + discord.js v14<br>
+                Uses ytdl-core, play-dl, yt-search for media handling<br>
+                Includes voice system via @discordjs/voice<br>
+                Supports async streaming & event-driven logic
+            </p>
+        </div>
+
+        <div class="about-text">
+            <h2>Admin Controls</h2>
+            <p>
+                Owner-only commands:<br>
+                • restart bot (329)<br>
+                • shutdown bot (328)<br>
+                • restricted execution system
+            </p>
+        </div>
+
+    </section>
+
+
+</div>
+
+{{end}}

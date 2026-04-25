@@ -1,0 +1,42 @@
+{{define "head"}}
+<link rel="stylesheet" href="/web/static/css/contacts.css">
+<script src="/web/static/js/contacts.js" defer></script>
+{{end}}
+
+{{define "content"}}
+
+<div class="container">
+
+    <header class="hero">
+        <h1 class="logo">Contact Us</h1>
+        <p class="subtitle">We’d love to hear from you</p>
+    </header>
+
+    <section class="contact-section">
+        <a href="mailto:support@jaylub.com">
+            <button id="send-btn" class="big-send-button">
+                Send Message ✉️
+            </button>
+        </a>
+    </section>
+
+    <section class="cards">
+        <div class="card">
+            <h2>Email</h2>
+            <p>support@jaylub.com</p>
+        </div>
+        <div class="card">
+            <h2>Community</h2>
+            <p>Join our developer space and connect.</p>
+        </div>
+        <a href="https://discord.gg/CntYuMWAWu">
+            <div class="card">
+                <h2>Discord</h2>
+                <p>Join our Discord server to chat with other members. And more support!</p>
+            </div>
+        </a>
+    </section>
+
+</div>
+
+{{end}}

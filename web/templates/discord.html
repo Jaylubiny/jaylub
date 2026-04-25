@@ -1,0 +1,63 @@
+
+{{define "head"}}
+<link rel="stylesheet" href="/web/static/css/discord.css">
+<script src="/web/static/js/discord.js" defer></script>
+{{end}}
+
+{{define "content"}}
+
+<div class="container">
+    <header class="hero">
+        <h1 class="logo">Jaylub Discord</h1>
+        <p class="subtitle">Bots • API • Integrations</p>
+    </header>
+
+    <section class="about">
+        <div class="about-block">
+            <h2>About</h2>
+            <p>
+                This section is dedicated to our Discord ecosystem.
+                We provide hosted bots, API callbacks, and integrations
+                to extend functionality and automate workflows.
+            </p>
+        </div>
+
+        <div class="about-block">
+            <h2>API Callbacks</h2>
+            <p>
+                Our infrastructure supports webhook-based callbacks and event-driven systems.
+                You can integrate your applications with our bots for real-time interactions,
+                automation, and custom command handling.
+            </p>
+        </div>
+    </section>
+
+    <section class="cards">
+        <div class="card">
+            <h2>Jaylub Bot</h2>
+            <p>Main utility and platform integration bot.</p>
+            <a href="https://discord.com/oauth2/authorize?client_id=1432074328119316681" target="_blank" class="btn">
+                Add to Discord
+            </a>
+        </div>
+
+        <div class="card">
+            <h2>Allah Bot</h2>
+            <p>Extended features and experimental systems.</p>
+            <a href="https://discord.com/oauth2/authorize?client_id=1493997797152915517" target="_blank" class="btn">
+                Add to Discord
+            </a>
+        </div>
+
+        <div class="card">
+            <h2>Documentation</h2>
+            <p>Learn how to use APIs, callbacks, and integrations.</p>
+            <a href="/docs" class="btn">
+                View Docs
+            </a>
+        </div>
+    </section>
+
+</div>
+
+{{end}}

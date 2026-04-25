@@ -1,0 +1,108 @@
+body {
+    margin: 0;
+    font-family: Arial, Helvetica, sans-serif;
+    background: #0f1115;
+    color: #e6e6e6;
+}
+
+.container.wiki {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* HEADER */
+.wiki-hero {
+    background: #161a22;
+    border: 1px solid #2a2f3a;
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 15px;
+}
+
+.logo {
+    margin: 0;
+    font-size: 34px;
+    color: #fff;
+}
+
+.subtitle {
+    color: #9aa4b2;
+    margin-top: 5px;
+}
+
+/* TOP NAV */
+.topbar {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 10px;
+
+    background: #161a22;
+    border: 1px solid #2a2f3a;
+    padding: 10px 14px;
+    border-radius: 10px;
+
+    position: sticky;
+    top: 10px;
+    margin-bottom: 20px;
+}
+
+.topbar a {
+    color: #6ea8fe;
+    text-decoration: none;
+    font-size: 14px;
+
+    padding: 6px 12px;
+    border-radius: 8px;
+
+    background: #0f1115;
+    border: 1px solid #2a2f3a;
+}
+
+.topbar a:hover {
+    background: #1b2230;
+    color: #9cc2ff;
+}
+
+/* SECTIONS */
+.wiki-box {
+    background: #161a22;
+    border: 1px solid #2a2f3a;
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 15px;
+}
+
+.wiki-box h2 {
+    margin-top: 0;
+}
+
+/* GRID */
+.wiki-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.card {
+    background: #161a22;
+    border: 1px solid #2a2f3a;
+    border-radius: 10px;
+    padding: 15px;
+}
+
+/* CODE */
+pre {
+    background: #0b0d12;
+    padding: 12px;
+    border-radius: 8px;
+    overflow-x: auto;
+}
+.footer {
+    margin-top: auto;
+    text-align: center;
+    padding: 20px;
+    color: #64748b;
+}

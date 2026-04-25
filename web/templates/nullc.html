@@ -1,0 +1,75 @@
+<!--
+{{define "head"}}
+<link rel="stylesheet" href="/web/static/css/nullos.css">
+<script src="/web/static/js/nullos.js"></script>
+{{end}}
+-->
+{{define "content"}}
+
+<h1>NullC</h1>
+<br>
+
+<p>
+    NullC is a C-like programming language created to make writing C faster,
+    cleaner, and easier without losing the power and low-level control that C provides.
+    The main purpose of NullC is to reduce unnecessary syntax complexity while still
+    keeping the structure and logic familiar to C developers.
+</p>
+
+<p>
+    It is designed for developers who enjoy the performance and flexibility of C,
+    but want a smoother writing experience with less repetitive syntax and faster
+    development speed. Instead of replacing C completely, NullC works as a practical
+    layer above it.
+</p>
+
+<p>
+    Source files in NullC use the <strong>.nc</strong> file extension. These files are
+    parsed using a basic Python parser that translates the simplified NullC syntax
+    into standard <strong>.c</strong> source code.
+</p>
+
+<p>
+    After the .nc file is converted into C code, the generated <strong>.c</strong> file
+    is automatically compiled using a standard C compiler into a binary executable
+    (or an .exe file on Windows). Once compilation is complete, the temporary generated
+    .c file is deleted automatically.
+</p>
+
+<p>
+    This leaves the developer with only two things: the original clean source code
+    written in NullC and the final compiled executable. This workflow keeps projects
+    organized while still allowing developers to benefit from the full performance
+    of native C compilation.
+</p>
+
+<p>
+    NullC is especially useful for system tools, backend utilities, low-level software,
+    operating system development, custom compilers, and experimental projects where
+    speed and direct hardware control are important.
+</p>
+
+<p>
+    The philosophy behind NullC is simple: write less, keep control, and compile fast.
+    It does not try to hide how systems work—it simply makes working with them more practical.
+</p>
+
+<p>
+    To download and test NullC:
+    <a href="https://preclik02.github.io/nullc/main">NullC download link</a>
+    and
+    <a href="https://github.com/preclik02/nullc">NullC repository</a>
+</p>
+
+<p>
+    If you want more details about installation, syntax rules, compiler behavior,
+    or project examples, the GitHub repository contains everything needed to get started.
+    The setup process is lightweight and designed to be simple for anyone already familiar with C.
+</p>
+
+<p>
+    NullC is built for developers who want the strength of C without fighting its syntax
+    every time they write code.
+</p>
+
+{{end}}

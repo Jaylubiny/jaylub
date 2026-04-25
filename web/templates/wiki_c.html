@@ -1,0 +1,94 @@
+{{define "head"}}
+<link rel="stylesheet" href="/web/static/css/wiki_c.css">
+<script src="/web/static/js/wiki_c.js" defer></script>
+{{end}}
+
+{{define "content"}}
+
+<div class="container wiki">
+
+    <header class="wiki-hero">
+        <h1 class="logo">C Programming Language</h1>
+        <p class="subtitle">Fast. Low-level. Foundational.</p>
+    </header>
+
+    <!-- TOP NAVIGATION BAR -->
+    <nav class="topbar">
+        <a href="#overview">Overview</a>
+        <a href="#history">History</a>
+        <a href="#features">Features</a>
+        <a href="#importance">Importance</a>
+        <a href="#example">Example</a>
+    </nav>
+
+    <!-- CONTENT -->
+    <main>
+
+        <section id="overview" class="wiki-box">
+            <h2>Overview</h2>
+            <p>
+                C is a general-purpose, procedural programming language created in the early 1970s.
+                It is widely used for system programming and embedded systems.
+            </p>
+        </section>
+
+        <section id="history" class="wiki-box">
+            <h2>History</h2>
+            <p>
+                Developed by Dennis Ritchie at Bell Labs, C became the foundation for many modern languages
+                including C++, Java, and Rust.
+            </p>
+        </section>
+
+        <section id="features" class="wiki-box">
+            <h2>Key Features</h2>
+            <p>
+                C offers low-level memory control, fast execution, portability, and minimal runtime overhead.
+            </p>
+        </section>
+
+        <section id="importance" class="wiki-box">
+            <h2>Why It Matters</h2>
+            <p>
+                C is still used in operating systems, compilers, embedded systems, and performance-critical software.
+            </p>
+        </section>
+
+        <section class="wiki-cards">
+
+            <div class="card">
+                <h2>Performance</h2>
+                <p>Near hardware-level speed.</p>
+            </div>
+
+            <div class="card">
+                <h2>Portability</h2>
+                <p>Runs on almost every system.</p>
+            </div>
+
+            <div class="card">
+                <h2>Control</h2>
+                <p>Direct memory access via pointers.</p>
+            </div>
+
+        </section>
+
+        <section id="example" class="wiki-code">
+            <h2>Example Code</h2>
+            <pre><code>
+#include <stdio.h>
+
+int main() {
+    printf("Hello, C world!\n");
+    return 0;
+}
+            </code></pre>
+        </section>
+
+    </main>
+
+
+
+</div>
+
+{{end}}

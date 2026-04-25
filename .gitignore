@@ -1,0 +1,6 @@
+.env
+*.pem
+*.key
+*.json
+cloudflared/
+node_modules/
