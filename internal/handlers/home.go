@@ -9,22 +9,21 @@ type PageData struct {
 	Title string
 }
 
-func Home(w http.ResponseWriter, r *http.Request) {
-
+func Render(w http.ResponseWriter, name string) {
 	tmpl := template.Must(template.ParseFiles(
 		"web/templates/layout.html",
-		"web/templates/home.html",
+		"web/templates/"+name+".html",
 	))
 
 	data := PageData{
-		Title: "Home",
+		Title: name,
 	}
 
-	err := tmpl.ExecuteTemplate(w, "layout.html", data)
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-	}
+	tmpl.ExecuteTemplate(w, "layout.html", data)
+}
 
+func Home(w http.ResponseWriter, r *http.Request) {
+	Render(w, "home")
 }
 
 
