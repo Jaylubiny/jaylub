@@ -2,10 +2,10 @@ package router
 
 import(
 	"net/http"
-	"jaylub/internal/handlers"
+	"jaylub/internal/handlers/root"
 )
 
-func NewRouter() http.Handler {
+func Basic() http.Handler {
 
 
 	

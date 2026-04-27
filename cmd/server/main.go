@@ -1,17 +1,26 @@
 package main
 
-import(
+import (
 	"fmt"
 	"net/http"
-	"jaylub/internal/routers"
+	router "jaylub/internal/routers"
 )
 
 func main() {
-	
-	fmt.Println("Starting server on port 8080...")
+	r1 := router.Basic()
+	r2 := router.Company()
 
-	r := router.NewRouter()
+	go func() {
+		fmt.Println("Server running on :8080")
+		err := http.ListenAndServe(":8080", r1)
+		if err != nil {
+			fmt.Println(err)
+		}
+	}()
 
-	http.ListenAndServe(":8080", r)
-
+	fmt.Println("Server running on :8090")
+	err := http.ListenAndServe(":8090", r2)
+	if err != nil {
+		fmt.Println(err)
+	}
 }
