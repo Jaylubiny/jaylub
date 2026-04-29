@@ -19,7 +19,7 @@ func Render(w http.ResponseWriter, name string) {
 
 	tmpl := template.Must(template.ParseFiles(
 		"web/templates/layout.html",
-		"web/templates/company/"+name+".html",
+		"web/templates/"+name+".html",
 	))
 
 	data := PageData{
