@@ -10,6 +10,7 @@ func Company() http.Handler {
 
 
 	mux.HandleFunc("/", handlers.Home)
+	mux.HandleFunc("/about", handlers.About)
 	
 
 	fs := http.FileServer(http.Dir("./web/static"))
