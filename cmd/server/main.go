@@ -3,10 +3,29 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"os/exec"
+
 	router "jaylub/internal/routers"
 )
 
+func startNotifyService() {
+	cmd := exec.Command("go", "run", "internal/services/notify")
+
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+
+	err := cmd.Start()
+	if err != nil {
+		fmt.Println("Failed to start notify service:", err)
+		return
+	}
+
+	fmt.Println("Notify service started with PID:", cmd.Process.Pid)
+}
+
 func main() {
+	startNotifyService()
+
 	r1 := router.Basic()
 	r2 := router.Company()
 
