@@ -9,6 +9,7 @@ import (
 )
 
 const filePath = "users.txt"
+const workDir = "onUser" // change this to your actual folder path
 
 func main() {
 	fmt.Println("Watching:", filePath)
@@ -24,16 +25,25 @@ func main() {
 		content := strings.TrimSpace(string(data))
 
 		if content == "1" {
-			fmt.Println("Detected 1 -> executing a.out")
+			fmt.Println("Detected 1 -> uploading Arduino sketch")
 
-			// execute ./a.out
-			cmd := exec.Command("./a.out")
+			cmd := exec.Command(
+				"arduino-cli",
+				"upload",
+				"-p", "/dev/ttyACM0",
+				"--fqbn", "arduino:avr:uno",
+				".",
+			)
+
+			// run inside onUser directory
+			cmd.Dir = workDir
+
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 
 			err := cmd.Run()
 			if err != nil {
-				fmt.Println("Error running a.out:", err)
+				fmt.Println("Error running arduino-cli upload:", err)
 			}
 
 			// reset file back to 0
@@ -45,7 +55,6 @@ func main() {
 			}
 		}
 
-		// check every second
 		time.Sleep(1 * time.Second)
 	}
 }
