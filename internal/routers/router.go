@@ -22,6 +22,8 @@ func Basic() http.Handler {
 
 
 	mux.HandleFunc("/pages", handlers.Page)
+	mux.HandleFunc("/pages/jayware", handlers.Jayware)
+	mux.HandleFunc("/pages/jayware/download", handlers.JaywareDownload)
 	mux.HandleFunc("/pages/nullos", handlers.Nullos)
 	mux.HandleFunc("/pages/nullc", handlers.Nullc)
 	mux.HandleFunc("/pages/allah", handlers.Allah)

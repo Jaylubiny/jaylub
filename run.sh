@@ -19,3 +19,6 @@ echo "Notify PID: $NOTIFY_PID"
 
 echo "Both services are running in background."
 echo "Terminal is free to use."
+
+# Optional: keep script alive if you want
+# wait $SERVER_PID $NOTIFY_PID

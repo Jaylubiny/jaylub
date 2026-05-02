@@ -8,6 +8,8 @@ LATER ^
 .com/lader/tatarka
 .com/games/tatarka
 .com/updates
+.com/pages/jayware
+.com/pages/jayware/download
 WORKING ON ^
 
 .com/wiki

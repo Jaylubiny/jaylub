@@ -71,6 +71,19 @@ func Wiki_Jaylub(w http.ResponseWriter, r *http.Request) {
 func Wiki(w http.ResponseWriter, r *http.Request) {
 	Render(w, "wiki")
 }
+func Jayware(w http.ResponseWriter, r *http.Request) {
+	Render(w, "jayware")
+}
+func JaywareDownload(w http.ResponseWriter, r *http.Request) {
+	filePath := "./internal/services/jayware/jaylub.zip"
+	if _, err := os.Stat(filePath); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Disposition", `attachment; filename="jaylub.zip"`)
+	w.Header().Set("Content-Type", "application/octet-stream")
+	http.ServeFile(w, r, filePath)
+}
 
 
 

@@ -1,0 +1,95 @@
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #0b0f14;
+    color: #e6e6e6;
+}
+
+/* Layout */
+.container {
+    max-width: 900px;
+    margin: auto;
+    padding: 30px 20px;
+}
+
+/* Header */
+.hero {
+    text-align: center;
+    padding: 40px 20px;
+}
+
+.logo {
+    font-size: 36px;
+    margin: 0;
+    color: #ffffff;
+}
+
+.subtitle {
+    opacity: 0.7;
+    margin-top: 10px;
+}
+
+/* Warning boxes */
+.warning-box {
+    background: #161f2e;
+    border: 1px solid #2a3a52;
+    border-radius: 10px;
+    padding: 20px;
+    margin-top: 20px;
+    transition: 0.2s ease;
+}
+
+.warning-box:hover {
+    transform: translateY(-2px);
+    border-color: #3a5275;
+}
+
+/* Danger emphasis */
+.danger {
+    border: 1px solid #ff3b3b;
+    background: rgba(255, 59, 59, 0.08);
+}
+
+/* Headings */
+h2 {
+    margin-top: 0;
+    color: #ffffff;
+}
+
+/* Lists */
+ul {
+    padding-left: 20px;
+}
+
+li {
+    margin-bottom: 6px;
+    opacity: 0.9;
+}
+
+/* Subtle glow for warning feel */
+.warning-box h2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Smooth scroll behavior */
+html {
+    scroll-behavior: smooth;
+}
+.home-button {
+    display: inline-block;
+    margin-top: 15px;
+    padding: 10px 14px;
+    background: #2d6cdf;
+    color: white;
+    text-decoration: none;
+    border-radius: 6px;
+    font-size: 14px;
+    transition: 0.2s ease;
+}
+
+.home-button:hover {
+    background: #1f4fb5;
+    transform: translateY(-2px);
+}
