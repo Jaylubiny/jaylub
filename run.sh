@@ -10,6 +10,7 @@ echo "Starting notify service..."
 
 (
   cd internal/services/
+  chmod +x ./notify
   ./notify
 ) &
 NOTIFY_PID=$!
