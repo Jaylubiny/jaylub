@@ -1,0 +1,124 @@
+{{define "head"}}
+<link rel="stylesheet" href="/web/static/css/me.css">
+<script src="/web/static/js/me.js" defer></script>
+{{end}}
+
+{{define "content"}}
+
+<section class="me-hero">
+    <div>
+        <p class="eyebrow">Header</p>
+        <h1>preclik02</h1>
+        <p class="intro">
+            C developer focused on Linux systems, command-line tools, and low-level programming.
+            I enjoy building practical software in C and exploring how operating systems, memory
+            management, and system internals work. Most of my projects are developed on Linux,
+            where I work daily with shell scripting, development tools, and system administration.
+        </p>
+    </div>
+
+    <a class="github-link" href="https://github.com/preclik02" target="_blank" rel="noopener noreferrer">
+        View GitHub
+    </a>
+</section>
+
+<section class="about-me">
+    <h2>About Me</h2>
+    <p>
+        I'm a student and self-taught developer with experience building command-line applications,
+        automation tools, and experimental system software. My primary language is C, but I also use
+        C++ and shell scripting when appropriate.
+    </p>
+
+    <p>My interests include:</p>
+    <ul class="interests">
+        <li>Systems programming</li>
+        <li>Linux internals</li>
+        <li>Operating systems</li>
+        <li>Command-line tooling</li>
+        <li>Automation and scripting</li>
+        <li>Software architecture</li>
+        <li>Programming language design</li>
+    </ul>
+
+    <p>
+        Currently, I am developing personal projects to deepen my understanding of low-level software
+        development and operating system concepts.
+    </p>
+</section>
+
+<section class="skills" aria-label="Developer skills">
+    <article class="skill">
+        <span>C</span>
+        <strong>1 year experience</strong>
+        <p>
+            Developing command-line applications, working with pointers, memory management, file
+            handling, process execution, and low-level Linux APIs. Focused on understanding how
+            software interacts with the operating system.
+        </p>
+    </article>
+    <article class="skill">
+        <span>Shell</span>
+        <strong>2 years experience</strong>
+        <p>
+            Creating automation scripts, managing Linux systems, simplifying development workflows,
+            and building command-line utilities. Comfortable working directly in terminal environments
+            and configuring Linux systems.
+        </p>
+    </article>
+    <article class="skill">
+        <span>C++</span>
+        <strong>Working knowledge</strong>
+        <p>
+            Experience with object-oriented programming, STL containers, classes, inheritance,
+            templates, and native application development. Used primarily for learning software
+            design and creating utility applications.
+        </p>
+    </article>
+    <article class="skill">
+        <span>Linux</span>
+        <strong>Daily use</strong>
+        <p>
+            Using Linux as a primary development environment. Experience with package management,
+            system services, permissions, networking basics, shell environments, SSH, development
+            toolchains, and system customization.
+        </p>
+    </article>
+</section>
+
+<section class="activity-panel">
+    <div class="section-heading">
+        <div>
+            <p class="eyebrow">Public GitHub Activity</p>
+            <h2 id="contribution-total">Loading contributions...</h2>
+        </div>
+        <button id="refresh-activity" type="button">Refresh</button>
+    </div>
+
+    <div id="activity-status" class="activity-status">Loading GitHub activity...</div>
+    <div class="contribution-card" aria-live="polite">
+        <div id="month-labels" class="month-labels" aria-hidden="true"></div>
+        <div class="contribution-body">
+            <div class="weekday-labels" aria-hidden="true">
+                <span>Mon</span>
+                <span>Wed</span>
+                <span>Fri</span>
+            </div>
+            <div id="contribution-grid" class="contribution-grid" role="img" aria-label="GitHub contribution activity for preclik02"></div>
+        </div>
+        <div class="contribution-footer">
+            <a href="https://github.com/preclik02" target="_blank" rel="noopener noreferrer">View on GitHub</a>
+            <div class="legend" aria-hidden="true">
+                <span>Less</span>
+                <i data-level="0"></i>
+                <i data-level="1"></i>
+                <i data-level="2"></i>
+                <i data-level="3"></i>
+                <i data-level="4"></i>
+                <span>More</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+{{end}}

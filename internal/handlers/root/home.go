@@ -35,6 +35,9 @@ func Home(w http.ResponseWriter, r *http.Request) {
 func About(w http.ResponseWriter, r *http.Request) {
 	Render(w, "about")
 }
+func Me(w http.ResponseWriter, r *http.Request) {
+	Render(w, "me")
+}
 func Allah(w http.ResponseWriter, r *http.Request) {
 	Render(w, "allah")
 }
@@ -84,7 +87,3 @@ func JaywareDownload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/octet-stream")
 	http.ServeFile(w, r, filePath)
 }
-
-
-
-

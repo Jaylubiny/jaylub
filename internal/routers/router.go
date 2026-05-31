@@ -1,25 +1,23 @@
 package router
 
-import(
-	"net/http"
+import (
 	"jaylub/internal/handlers/root"
+	"net/http"
 )
 
 func Basic() http.Handler {
 
-
-	
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", handlers.Home)
 	mux.HandleFunc("/about", handlers.About)
+	mux.HandleFunc("/me", handlers.Me)
 	mux.HandleFunc("/contacts", handlers.Contacts)
 	mux.HandleFunc("/docs", handlers.Docs)
 
 	mux.HandleFunc("/wiki", handlers.Wiki)
 	mux.HandleFunc("/wiki/C", handlers.Wiki_C)
 	mux.HandleFunc("/wiki/jaylub", handlers.Wiki_Jaylub)
-
 
 	mux.HandleFunc("/pages", handlers.Page)
 	mux.HandleFunc("/pages/jayware", handlers.Jayware)
@@ -32,9 +30,6 @@ func Basic() http.Handler {
 
 	mux.HandleFunc("/discord", handlers.Discord)
 	mux.HandleFunc("/discord/allah/callback", handlers.AllahCallback)
-
-
-
 
 	fs := http.FileServer(http.Dir("./web/static"))
 	mux.Handle("/web/static/", http.StripPrefix("/web/static/", fs))
