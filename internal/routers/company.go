@@ -1,21 +1,14 @@
 package router
 
-import(
-	"net/http"
+import (
 	"jaylub/internal/handlers/company"
+	"net/http"
 )
 
 func Company() http.Handler {
-	mux := http.NewServeMux()
-
-
-	mux.HandleFunc("/", handlers.Home)
-	mux.HandleFunc("/about", handlers.About)
-	
-
-	fs := http.FileServer(http.Dir("./web/static"))
-	mux.Handle("/web/static/", http.StripPrefix("/web/static/", fs))
-	return mux
-
+	routes := []route{
+		{"/", handlers.Home},
+		{"/about", handlers.About},
+	}
+	return newMux(routes)
 }
-

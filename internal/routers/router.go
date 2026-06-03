@@ -5,34 +5,50 @@ import (
 	"net/http"
 )
 
+type route struct {
+	pattern string
+	handler http.HandlerFunc
+}
+
 func Basic() http.Handler {
+	routes := []route{
+		{"/", handlers.Home},
+		{"/about", handlers.About},
+		{"/me", handlers.Me},
+		{"/contacts", handlers.Contacts},
+		{"/docs", handlers.Docs},
+		{"/game/test", handlers.GameTest},
 
+		{"/wiki", handlers.Wiki},
+		{"/wiki/C", handlers.Wiki_C},
+		{"/wiki/jaylub", handlers.Wiki_Jaylub},
+
+		{"/pages", handlers.Page},
+		{"/pages/jayware", handlers.Jayware},
+		{"/pages/jayware/download", handlers.JaywareDownload},
+		{"/pages/nullos", handlers.Nullos},
+		{"/pages/nullc", handlers.Nullc},
+		{"/pages/allah", handlers.Allah},
+		{"/pages/jaylub", handlers.Jaylub},
+		{"/pages/services", handlers.Services},
+
+		{"/discord", handlers.Discord},
+		{"/discord/allah/callback", handlers.AllahCallback},
+	}
+	return newMux(routes)
+}
+
+func newMux(routes []route) *http.ServeMux {
 	mux := http.NewServeMux()
+	for _, route := range routes {
+		mux.HandleFunc(route.pattern, route.handler)
+	}
+	mountStaticFiles(mux)
+	return mux
+}
 
-	mux.HandleFunc("/", handlers.Home)
-	mux.HandleFunc("/about", handlers.About)
-	mux.HandleFunc("/me", handlers.Me)
-	mux.HandleFunc("/contacts", handlers.Contacts)
-	mux.HandleFunc("/docs", handlers.Docs)
-
-	mux.HandleFunc("/wiki", handlers.Wiki)
-	mux.HandleFunc("/wiki/C", handlers.Wiki_C)
-	mux.HandleFunc("/wiki/jaylub", handlers.Wiki_Jaylub)
-
-	mux.HandleFunc("/pages", handlers.Page)
-	mux.HandleFunc("/pages/jayware", handlers.Jayware)
-	mux.HandleFunc("/pages/jayware/download", handlers.JaywareDownload)
-	mux.HandleFunc("/pages/nullos", handlers.Nullos)
-	mux.HandleFunc("/pages/nullc", handlers.Nullc)
-	mux.HandleFunc("/pages/allah", handlers.Allah)
-	mux.HandleFunc("/pages/jaylub", handlers.Jaylub)
-	mux.HandleFunc("/pages/services", handlers.Services)
-
-	mux.HandleFunc("/discord", handlers.Discord)
-	mux.HandleFunc("/discord/allah/callback", handlers.AllahCallback)
-
+func mountStaticFiles(mux *http.ServeMux) {
 	fs := http.FileServer(http.Dir("./web/static"))
 	mux.Handle("/web/static/", http.StripPrefix("/web/static/", fs))
-	return mux
-
+	mux.Handle("/static/", http.StripPrefix("/static/", fs))
 }

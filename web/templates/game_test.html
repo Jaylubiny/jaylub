@@ -1,0 +1,28 @@
+{{define "head"}}
+<link rel="stylesheet" href="/web/static/css/game_test.css">
+<script src="/web/static/js/game_test.js" defer></script>
+{{end}}
+
+{{define "content"}}
+<section class="game-shell" aria-label="Jaylub platformer game">
+  <div class="game-topbar">
+    <h1 class="game-title">Jaylub Platformer</h1>
+    <p class="game-hint">Arrow Keys = Move, Enter = Interact</p>
+  </div>
+
+  <div class="game-wrap">
+    <canvas id="platformerCanvas" width="1120" height="630"></canvas>
+    <div id="notePrompt" class="note-prompt">Press Enter to read note</div>
+  </div>
+</section>
+
+<div id="noteModal" class="note-modal" role="dialog" aria-modal="true" aria-labelledby="noteTitle">
+  <div class="note-card">
+    <header>
+      <h2 id="noteTitle">Note</h2>
+      <button id="noteClose" class="note-close" type="button" aria-label="Close note">&times;</button>
+    </header>
+    <p id="noteText"></p>
+  </div>
+</div>
+{{end}}

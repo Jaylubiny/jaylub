@@ -2,28 +2,33 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 
 	router "jaylub/internal/routers"
 )
 
+type server struct {
+	addr    string
+	handler http.Handler
+}
 
 func main() {
+	servers := []server{
+		{":8080", router.Basic()},
+		{":8090", router.Company()},
+	}
 
-	r1 := router.Basic()
-	r2 := router.Company()
+	for _, srv := range servers[:len(servers)-1] {
+		go startServer(srv)
+	}
 
-	go func() {
-		fmt.Println("Server running on :8080")
-		err := http.ListenAndServe(":8080", r1)
-		if err != nil {
-			fmt.Println(err)
-		}
-	}()
+	startServer(servers[len(servers)-1])
+}
 
-	fmt.Println("Server running on :8090")
-	err := http.ListenAndServe(":8090", r2)
-	if err != nil {
-		fmt.Println(err)
+func startServer(srv server) {
+	fmt.Println("Server running on " + srv.addr)
+	if err := http.ListenAndServe(srv.addr, srv.handler); err != nil {
+		log.Println(err)
 	}
 }

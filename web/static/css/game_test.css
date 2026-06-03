@@ -1,0 +1,154 @@
+main {
+  width: min(1180px, calc(100vw - 24px));
+  max-width: none;
+  margin: 18px auto;
+  padding: 14px;
+  border-radius: 8px;
+}
+
+.container {
+  padding: 0;
+}
+
+.game-shell {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(229, 231, 235, 0.16);
+  border-radius: 8px;
+  background: #10202f;
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.38);
+}
+
+.game-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: rgba(8, 15, 25, 0.82);
+  border-bottom: 1px solid rgba(229, 231, 235, 0.12);
+}
+
+.game-title {
+  margin: 0;
+  font-size: 1rem;
+  color: #f8fafc;
+}
+
+.game-hint {
+  margin: 0;
+  color: #cbd5e1;
+  font-size: 0.9rem;
+}
+
+.game-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  min-height: 420px;
+  max-height: 720px;
+}
+
+#platformerCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #87bdd8;
+}
+
+.note-prompt {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #f8fafc;
+  font-size: 0.9rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+}
+
+.note-prompt.is-visible {
+  opacity: 1;
+}
+
+.note-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(2, 6, 23, 0.72);
+}
+
+.note-modal.is-open {
+  display: flex;
+}
+
+.note-card {
+  width: min(420px, 100%);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: #f8fafc;
+  color: #172033;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.48);
+}
+
+.note-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #d6dee8;
+}
+
+.note-card h2 {
+  margin: 0;
+  color: #172033;
+  font-size: 1rem;
+}
+
+.note-card p {
+  margin: 0;
+  padding: 18px 14px;
+  color: #334155;
+  font-size: 1.05rem;
+}
+
+.note-close {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: #172033;
+  color: #f8fafc;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+@media (max-width: 700px) {
+  main {
+    width: calc(100vw - 12px);
+    margin: 8px auto;
+    padding: 8px;
+  }
+
+  .game-topbar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .game-wrap {
+    min-height: 360px;
+    aspect-ratio: 4 / 3;
+  }
+}
