@@ -2,13 +2,16 @@ package views
 
 import (
 	"html/template"
+	"jaylub/internal/auth"
 	"net/http"
 	"os"
 	"path/filepath"
 )
 
 type PageData struct {
-	Title string
+	Title    string
+	Username string
+	Initials string
 }
 
 type Renderer struct {
@@ -25,11 +28,11 @@ func NewRenderer(templateDir string) Renderer {
 
 func (r Renderer) Page(name string) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		r.Render(w, name)
+		r.Render(w, req, name)
 	}
 }
 
-func (r Renderer) Render(w http.ResponseWriter, name string) {
+func (r Renderer) Render(w http.ResponseWriter, req *http.Request, name string) {
 	if err := recordVisit(); err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
@@ -45,6 +48,11 @@ func (r Renderer) Render(w http.ResponseWriter, name string) {
 	}
 
 	data := PageData{Title: name}
+	if user, ok := auth.UserFromContext(req.Context()); ok {
+		data.Username = user.Username
+		data.Initials = initials(user.Username)
+	}
+
 	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
 		http.Error(w, "Template Error", http.StatusInternalServerError)
 	}
@@ -52,4 +60,11 @@ func (r Renderer) Render(w http.ResponseWriter, name string) {
 
 func recordVisit() error {
 	return os.WriteFile("internal/services/users.txt", []byte("1"), 0644)
+}
+
+func initials(username string) string {
+	if username == "" {
+		return "?"
+	}
+	return string([]rune(username)[0])
 }

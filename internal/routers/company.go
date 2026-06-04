@@ -1,14 +1,15 @@
 package router
 
 import (
+	"jaylub/internal/auth"
 	"jaylub/internal/handlers/company"
 	"net/http"
 )
 
-func Company() http.Handler {
+func Company(authService *auth.Service) http.Handler {
 	routes := []route{
 		{"/", handlers.Home},
 		{"/about", handlers.About},
 	}
-	return newMux(routes)
+	return newMux(routes, authService)
 }

@@ -15,11 +15,27 @@
 <div id="cursor"></div>
 
 <nav>
-  <a href="/">Home</a>
-  <a href="/about">About</a>
-  <a href="/me">Me</a>
-  <a href="/contacts">Contacts</a>
-  <a href="/docs">Documentation</a>
+  <div class="nav-links">
+    <a href="/">Home</a>
+    <a href="/about">About</a>
+    <a href="/me">Me</a>
+    <a href="/contacts">Contacts</a>
+    <a href="/docs">Documentation</a>
+  </div>
+
+  {{if .Username}}
+  <div class="user-menu" data-user-menu>
+    <button class="profile-button" type="button" data-user-menu-button aria-haspopup="true" aria-expanded="false">
+      <span class="profile-avatar" aria-hidden="true">{{.Initials}}</span>
+      <span class="profile-name">{{.Username}}</span>
+    </button>
+    <div class="user-dropdown" data-user-dropdown hidden>
+      <form method="post" action="/logout">
+        <button type="submit">Logout</button>
+      </form>
+    </div>
+  </div>
+  {{end}}
 </nav>
 
 <main>

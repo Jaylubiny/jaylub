@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{.Title}}</title>
+  <link rel="icon" href="/web/static/img/icon.png" type="image/png">
+  <link rel="stylesheet" href="/web/static/css/layout.css" />
+  <link rel="stylesheet" href="/web/static/css/login.css" />
+  <script src="/web/static/js/layout.js" defer></script>
+  <script src="/web/static/js/login.js" defer></script>
+</head>
+<body class="login-page">
+  <div id="cursor"></div>
+
+  <main class="login-shell">
+    <section class="login-panel" aria-labelledby="login-title">
+      <div class="login-brand">
+        <span class="login-mark">J</span>
+        <div>
+          <h1 id="login-title">Welcome back</h1>
+          <p>Sign in to continue to Jaylubiny.</p>
+        </div>
+      </div>
+
+      {{if .Error}}
+      <p class="login-error" role="alert">{{.Error}}</p>
+      {{end}}
+
+      <form class="login-form" method="post" action="/login">
+        <label for="username">Username</label>
+        <input id="username" name="username" type="text" autocomplete="username" required autofocus>
+
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+
+        <button class="login-submit" type="submit">Login</button>
+      </form>
+
+      <button class="create-account-button" type="button" data-open-signup>Create Account</button>
+    </section>
+  </main>
+
+  <div class="signup-modal" data-signup-modal hidden>
+    <div class="signup-backdrop" data-close-signup></div>
+    <dialog class="signup-dialog" open aria-labelledby="signup-title">
+      <button class="signup-close" type="button" data-close-signup aria-label="Close">&times;</button>
+      <h2 id="signup-title">Create Account</h2>
+      <p>Email <a href="mailto:support@jaylub.com">support@jaylub.com</a> to create account.</p>
+    </dialog>
+  </div>
+</body>
+</html>

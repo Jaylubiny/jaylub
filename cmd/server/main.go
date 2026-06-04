@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"jaylub/internal/auth"
 	"log"
 	"net/http"
 
@@ -14,9 +15,15 @@ type server struct {
 }
 
 func main() {
+	authService, err := auth.New("internal/database/users.db")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer authService.Close()
+
 	servers := []server{
-		{":8080", router.Basic()},
-		{":8090", router.Company()},
+		{":8080", router.Basic(authService)},
+		{":8090", router.Company(authService)},
 	}
 
 	for _, srv := range servers[:len(servers)-1] {

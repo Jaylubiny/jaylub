@@ -4,3 +4,19 @@
 *.json
 cloudflared/
 node_modules/
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
+*.pyc
+
+# Session files
+sessions/
+instance/
+
+# Logs
+*.log

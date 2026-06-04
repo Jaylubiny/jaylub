@@ -65,6 +65,7 @@
     canvas.width = Math.max(640, Math.floor(rect.width * window.devicePixelRatio));
     canvas.height = Math.max(360, Math.floor(rect.height * window.devicePixelRatio));
     ctx.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0);
+    ctx.imageSmoothingEnabled = false;
   }
 
   function viewWidth() {
@@ -154,14 +155,14 @@
   function drawBackground() {
     const w = viewWidth();
     const h = viewHeight();
-    const sky = ctx.createLinearGradient(0, 0, 0, h);
-    sky.addColorStop(0, "#7cc7e8");
-    sky.addColorStop(0.62, "#d8f1f2");
-    sky.addColorStop(1, "#f4d79b");
-    ctx.fillStyle = sky;
+    ctx.fillStyle = "#77c7ef";
     ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = "#9be3ff";
+    ctx.fillRect(0, 0, w, Math.floor(h * 0.45));
+    ctx.fillStyle = "#f7d884";
+    ctx.fillRect(0, Math.floor(h * 0.72), w, Math.ceil(h * 0.28));
 
-    ctx.fillStyle = "rgba(255, 255, 255, 0.72)";
+    ctx.fillStyle = "#fff8d7";
     drawCloud(180 - cameraX * 0.2, 95 - cameraY * 0.08);
     drawCloud(760 - cameraX * 0.2, 145 - cameraY * 0.08);
     drawCloud(1420 - cameraX * 0.2, 80 - cameraY * 0.08);
@@ -171,22 +172,24 @@
   }
 
   function drawCloud(x, y) {
-    ctx.beginPath();
-    ctx.arc(x, y, 22, 0, Math.PI * 2);
-    ctx.arc(x + 28, y - 10, 28, 0, Math.PI * 2);
-    ctx.arc(x + 62, y, 24, 0, Math.PI * 2);
-    ctx.rect(x, y, 64, 22);
-    ctx.fill();
+    const px = Math.round(x / 8) * 8;
+    const py = Math.round(y / 8) * 8;
+    ctx.fillRect(px, py, 32, 16);
+    ctx.fillRect(px + 24, py - 16, 48, 32);
+    ctx.fillRect(px + 64, py, 40, 16);
+    ctx.fillRect(px + 16, py + 16, 72, 16);
   }
 
   function drawHills(color, parallax, baseY) {
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.moveTo(-80, viewHeight());
-    for (let x = -120; x < viewWidth() + 180; x += 160) {
+    for (let x = -120; x < viewWidth() + 180; x += 80) {
       const worldX = x + cameraX * parallax;
-      const y = baseY - cameraY * 0.22 + Math.sin(worldX * 0.006) * 40;
-      ctx.quadraticCurveTo(x + 80, y - 130, x + 160, y);
+      const y = Math.round((baseY - cameraY * 0.22 + Math.sin(worldX * 0.006) * 40) / 16) * 16;
+      ctx.lineTo(x, y);
+      ctx.lineTo(x + 40, y - 48);
+      ctx.lineTo(x + 80, y);
     }
     ctx.lineTo(viewWidth() + 160, viewHeight());
     ctx.closePath();
@@ -195,29 +198,51 @@
 
   function drawPlatforms() {
     for (const platform of platforms) {
-      const x = platform.x - cameraX;
-      const y = platform.y - cameraY;
-      ctx.fillStyle = platform.kind === "ground" ? "#3b6d47" : "#746a5d";
+      const x = Math.round(platform.x - cameraX);
+      const y = Math.round(platform.y - cameraY);
+      const topColor = platform.kind === "ground" ? "#74b15a" : "#b99a68";
+      const bodyColor = platform.kind === "ground" ? "#3f7040" : "#75614d";
+      const shadowColor = platform.kind === "ground" ? "#25472d" : "#4c3f35";
+
+      ctx.fillStyle = "#172033";
+      ctx.fillRect(x - 4, y - 4, platform.w + 8, platform.h + 8);
+      ctx.fillStyle = bodyColor;
       ctx.fillRect(x, y, platform.w, platform.h);
-      ctx.fillStyle = platform.kind === "ground" ? "#72a85c" : "#a99678";
-      ctx.fillRect(x, y, platform.w, 10);
-      ctx.fillStyle = "rgba(21, 28, 22, 0.28)";
-      for (let i = 14; i < platform.w; i += 42) {
-        ctx.fillRect(x + i, y + 18, 18, 4);
+      ctx.fillStyle = topColor;
+      ctx.fillRect(x, y, platform.w, 16);
+      ctx.fillStyle = shadowColor;
+      ctx.fillRect(x, y + platform.h - 12, platform.w, 12);
+
+      for (let tileX = 0; tileX < platform.w; tileX += 32) {
+        const tileW = Math.min(32, platform.w - tileX);
+        if (tileW <= 0) continue;
+
+        ctx.strokeStyle = shadowColor;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + tileX, y, tileW, Math.min(platform.h, 32));
+        ctx.fillStyle = "rgba(255, 255, 255, 0.12)";
+        ctx.fillRect(x + tileX + 6, y + 6, Math.min(8, Math.max(0, tileW - 8)), 4);
       }
     }
   }
 
   function drawHazards() {
     for (const hazard of hazards) {
-      const x = hazard.x - cameraX;
-      const y = hazard.y - cameraY;
-      ctx.fillStyle = "#6b1f2a";
+      const x = Math.round(hazard.x - cameraX);
+      const y = Math.round(hazard.y - cameraY);
       for (let i = 0; i < hazard.w; i += 28) {
+        ctx.fillStyle = "#172033";
         ctx.beginPath();
         ctx.moveTo(x + i, y + hazard.h);
         ctx.lineTo(x + i + 14, y + 5);
         ctx.lineTo(x + i + 28, y + hazard.h);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#b4233a";
+        ctx.beginPath();
+        ctx.moveTo(x + i + 5, y + hazard.h);
+        ctx.lineTo(x + i + 14, y + 16);
+        ctx.lineTo(x + i + 23, y + hazard.h);
         ctx.closePath();
         ctx.fill();
       }
@@ -226,21 +251,25 @@
 
   function drawNotes() {
     for (const note of notes) {
-      const x = note.x - cameraX;
-      const y = note.y - cameraY;
+      const x = Math.round(note.x - cameraX);
+      const y = Math.round(note.y - cameraY);
       ctx.save();
       ctx.translate(x, y);
-      ctx.rotate(Math.sin(performance.now() / 420 + note.x) * 0.08);
+      ctx.translate(0, Math.round(Math.sin(performance.now() / 300 + note.x) * 4));
+      ctx.fillStyle = "#172033";
+      ctx.fillRect(-20, -26, 40, 52);
       ctx.fillStyle = "#fff7c2";
       ctx.fillRect(-16, -22, 32, 44);
+      ctx.fillStyle = "#facc15";
+      ctx.fillRect(-16, -22, 32, 8);
       ctx.fillStyle = "#c99638";
       ctx.fillRect(-10, -10, 20, 3);
       ctx.fillRect(-10, -2, 17, 3);
       ctx.fillRect(-10, 6, 22, 3);
       ctx.fillStyle = "#f59e0b";
-      ctx.beginPath();
-      ctx.arc(0, -28, 9, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fillRect(-8, -36, 16, 12);
+      ctx.fillStyle = "#fde68a";
+      ctx.fillRect(-4, -32, 8, 4);
       ctx.restore();
     }
   }
@@ -249,8 +278,11 @@
     const x = player.x - cameraX;
     const y = player.y - cameraY;
     ctx.save();
-    ctx.translate(x + player.width / 2, y + player.height / 2);
+    ctx.imageSmoothingEnabled = false;
+    ctx.translate(Math.round(x + player.width / 2), Math.round(y + player.height / 2));
     ctx.scale(player.facing, 1);
+    ctx.fillStyle = "rgba(15, 23, 42, 0.35)";
+    ctx.fillRect(-22, 28, 44, 8);
     if (character.complete && character.naturalWidth) {
       ctx.drawImage(character, -player.width / 2, -player.height / 2, player.width, player.height);
     } else {

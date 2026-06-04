@@ -1,6 +1,7 @@
 package router
 
 import (
+	"jaylub/internal/auth"
 	"jaylub/internal/handlers/root"
 	"net/http"
 )
@@ -10,7 +11,7 @@ type route struct {
 	handler http.HandlerFunc
 }
 
-func Basic() http.Handler {
+func Basic(authService *auth.Service) http.Handler {
 	routes := []route{
 		{"/", handlers.Home},
 		{"/about", handlers.About},
@@ -35,16 +36,18 @@ func Basic() http.Handler {
 		{"/discord", handlers.Discord},
 		{"/discord/allah/callback", handlers.AllahCallback},
 	}
-	return newMux(routes)
+	return newMux(routes, authService)
 }
 
-func newMux(routes []route) *http.ServeMux {
+func newMux(routes []route, authService *auth.Service) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/login", authService.LoginPage())
+	mux.HandleFunc("/logout", authService.LogoutHandler())
 	for _, route := range routes {
 		mux.HandleFunc(route.pattern, route.handler)
 	}
 	mountStaticFiles(mux)
-	return mux
+	return authService.Middleware(mux)
 }
 
 func mountStaticFiles(mux *http.ServeMux) {

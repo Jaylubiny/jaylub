@@ -36,6 +36,8 @@ body {
 
 nav {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 20px;
   padding: 16px 24px;
   background: rgba(17, 24, 39, 0.8);
@@ -43,6 +45,14 @@ nav {
   border-bottom: 1px solid rgba(148, 163, 184, 0.15);
   position: sticky;
   top: 0;
+  z-index: 1000;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
 }
 
 nav a {
@@ -55,6 +65,82 @@ nav a {
 nav a:hover {
   color: var(--accent);
   transform: translateY(-1px);
+}
+
+.user-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.profile-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 4px 12px 4px 4px;
+  color: var(--text);
+  background: rgba(2, 6, 23, 0.35);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.profile-button:hover {
+  border-color: rgba(56, 189, 248, 0.5);
+}
+
+.profile-avatar {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 50%;
+  color: #020617;
+  background: var(--accent);
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.profile-name {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  min-width: 150px;
+  padding: 6px;
+  background: var(--card);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+  box-shadow: 0 14px 45px rgba(0, 0, 0, 0.45);
+}
+
+.user-dropdown[hidden] {
+  display: none;
+}
+
+.user-dropdown button {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  color: var(--text);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.user-dropdown button:hover {
+  color: var(--accent);
+  background: rgba(148, 163, 184, 0.08);
 }
 
 main {
@@ -90,6 +176,25 @@ p {
     color: #64748b;
 }
 
+@media (max-width: 640px) {
+  nav {
+    align-items: flex-start;
+    gap: 12px;
+    padding-inline: 16px;
+  }
+
+  .nav-links {
+    gap: 12px;
+  }
+
+  .profile-name {
+    display: none;
+  }
+
+  .profile-button {
+    padding-right: 4px;
+  }
+}
 
 
 
