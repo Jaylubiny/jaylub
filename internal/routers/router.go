@@ -12,6 +12,7 @@ type route struct {
 }
 
 func Basic(authService *auth.Service) http.Handler {
+	chatService := handlers.NewChatService(authService.DB())
 	routes := []route{
 		{"/", handlers.Home},
 		{"/about", handlers.About},
@@ -35,6 +36,11 @@ func Basic(authService *auth.Service) http.Handler {
 
 		{"/discord", handlers.Discord},
 		{"/discord/allah/callback", handlers.AllahCallback},
+		{"/.well-known/discord", handlers.DiscordWellKnown},
+
+		{"/chat", chatService.Page},
+		{"/chat/messages", chatService.Messages},
+		{"/chat/send", chatService.SendMessage},
 	}
 	return newMux(routes, authService)
 }

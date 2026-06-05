@@ -38,3 +38,8 @@ func JaywareDownload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/octet-stream")
 	http.ServeFile(w, r, filePath)
 }
+
+func DiscordWellKnown(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = w.Write([]byte("dh=cbd7bfb6c98d2b7731b4ebbe53f15efeb90584c2"))
+}

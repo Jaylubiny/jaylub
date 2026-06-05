@@ -1,0 +1,30 @@
+{{define "head"}}
+<link rel="stylesheet" href="/web/static/css/chat.css">
+<script src="/web/static/js/chat.js" defer></script>
+{{end}}
+
+{{define "content"}}
+
+<section class="chat-page" data-current-user="{{.Username}}">
+    <header class="chat-header">
+        <div>
+            <h1>Chat</h1>
+            <p>Global room for logged-in Jaylub users.</p>
+        </div>
+        <div class="chat-status" aria-label="Online users">
+            <span id="online-count">1</span>
+            <span>online</span>
+        </div>
+    </header>
+
+    <div id="chat-error" class="chat-error" role="alert" hidden></div>
+
+    <section id="message-list" class="message-list" aria-live="polite" aria-label="Chat messages"></section>
+
+    <form id="chat-form" class="chat-form" autocomplete="off">
+        <textarea id="message-input" name="message" maxlength="500" rows="2" placeholder="Message" aria-label="Message"></textarea>
+        <button type="submit">Send</button>
+    </form>
+</section>
+
+{{end}}

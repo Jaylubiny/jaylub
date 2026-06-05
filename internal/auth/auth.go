@@ -65,6 +65,10 @@ func (s *Service) Close() error {
 	return s.db.Close()
 }
 
+func (s *Service) DB() *sql.DB {
+	return s.db
+}
+
 func (s *Service) initSchema() error {
 	_, err := s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS users (
@@ -82,6 +86,16 @@ func (s *Service) initSchema() error {
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		);
+
+		CREATE TABLE IF NOT EXISTS chat_messages (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT NOT NULL,
+			message TEXT NOT NULL,
+			timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_chat_messages_timestamp ON chat_messages(timestamp);
+		CREATE INDEX IF NOT EXISTS idx_chat_messages_id ON chat_messages(id);
 	`)
 	return err
 }
@@ -271,6 +285,7 @@ func (s *Service) sessionCookie(r *http.Request, value string, expires time.Time
 
 func (s *Service) isPublicPath(path string) bool {
 	return path == "/login" ||
+		path == "/.well-known/discord" ||
 		strings.HasPrefix(path, "/web/static/") ||
 		strings.HasPrefix(path, "/static/")
 }
