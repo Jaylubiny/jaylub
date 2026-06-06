@@ -1,0 +1,129 @@
+{{define "head"}}
+<link rel="stylesheet" href="/web/static/css/jaylive.css">
+<script src="/web/static/js/jaylive.js" defer></script>
+{{end}}
+
+{{define "content"}}
+<section class="survivor-shell" data-username="{{.Username}}" aria-label="Jaylive arena survival game">
+  <div class="survivor-stage">
+    <canvas id="survivorCanvas" width="960" height="540" aria-label="Top-down 2D survival arena"></canvas>
+
+    <div class="game-hud" id="gameHud" hidden>
+      <div class="hud-panel hp-panel">
+        <span>HP</span>
+        <div class="hp-bar"><div id="hpFill"></div></div>
+        <strong id="hpText">100 / 100</strong>
+      </div>
+      <div class="hud-panel">Gold <strong id="runGold">0</strong></div>
+      <div class="hud-panel">Kills <strong id="runKills">0</strong></div>
+      <div class="hud-panel">Time <strong id="runTime">0:00</strong></div>
+    </div>
+
+    <div class="pixel-screen menu-screen" id="mainMenu">
+      <div class="menu-backdrop" aria-hidden="true"></div>
+      <div class="pixel-card menu-card">
+        <p class="eyebrow">2D Arena Survival</p>
+        <h1>Jaylive</h1>
+        <p class="menu-copy">Jaylub game</p>
+        <div class="menu-stats">
+          <span>Gold <strong data-gold>0</strong></span>
+          <span>Lifetime Kills <strong data-lifetime-kills>0</strong></span>
+        </div>
+        <div class="menu-actions">
+          <button class="pixel-button" id="playButton" type="button">Play</button>
+          <button class="pixel-button muted" id="leaderboardButton" type="button">Leaderboards</button>
+          <button class="pixel-button muted" id="shopButton" type="button">Shop</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="pixel-screen panel-screen" id="shopScreen" hidden>
+      <div class="pixel-card wide-card">
+        <header class="panel-header">
+          <div>
+            <p class="eyebrow">Permanent Upgrades</p>
+            <h2>Shop</h2>
+          </div>
+          <button class="pixel-button small" data-menu-back type="button">Back</button>
+        </header>
+        <div class="shop-layout">
+          <section class="character-panel">
+            <h3>Character</h3>
+            <div class="character-slot active">
+              <img src="/static/img/character.png" alt="Jaylub">
+              <div>
+                <strong>Jaylub</strong>
+                <span>Selected</span>
+              </div>
+            </div>
+            <div class="locked-grid">
+              <div class="locked-slot">?</div>
+              <div class="locked-slot">?</div>
+              <div class="locked-slot">?</div>
+            </div>
+            <p>More characters coming soon.</p>
+          </section>
+          <section class="upgrade-panel">
+            <div class="shop-gold">Gold <strong data-gold>0</strong></div>
+            <div id="upgradeList" class="upgrade-list"></div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div class="pixel-screen panel-screen" id="leaderboardScreen" hidden>
+      <div class="pixel-card wide-card">
+        <header class="panel-header">
+          <div>
+            <p class="eyebrow" id="leaderboardEyebrow">Total Enemies Killed</p>
+            <h2>Leaderboards</h2>
+          </div>
+          <button class="pixel-button small" data-menu-back type="button">Back</button>
+        </header>
+        <div class="leaderboard-tabs" aria-label="Leaderboard sorting">
+          <button class="pixel-button small is-active" type="button" data-leaderboard-sort="totalKills">Total Kills</button>
+          <button class="pixel-button small muted" type="button" data-leaderboard-sort="bestRunKills">Kills In One Run</button>
+          <button class="pixel-button small muted" type="button" data-leaderboard-sort="bestRunSeconds">Most Time In One Run</button>
+        </div>
+        <table class="leaderboard-table">
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Username</th>
+              <th id="leaderboardValueHeader">Total Kills</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboardRows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="pixel-screen panel-screen" id="gameOverScreen" hidden>
+      <div class="pixel-card menu-card">
+        <p class="eyebrow">Run Ended</p>
+        <h2>Game Over</h2>
+        <div class="result-grid">
+          <span>Survival Time <strong id="finalTime">0:00</strong></span>
+          <span>Enemies Killed <strong id="finalKills">0</strong></span>
+          <span>Gold Collected <strong id="finalGold">0</strong></span>
+        </div>
+        <div class="menu-actions">
+          <button class="pixel-button" id="playAgainButton" type="button">Play Again</button>
+          <button class="pixel-button muted" id="mainMenuButton" type="button">Main Menu</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="pixel-screen panel-screen" id="pauseScreen" hidden>
+      <div class="pixel-card menu-card">
+        <p class="eyebrow">Run Paused</p>
+        <h2>Pause</h2>
+        <div class="menu-actions">
+          <button class="pixel-button" id="continueButton" type="button">Continue</button>
+          <button class="pixel-button muted" id="quitButton" type="button">Quit</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{{end}}

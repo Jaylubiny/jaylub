@@ -96,7 +96,75 @@ func (s *Service) initSchema() error {
 
 		CREATE INDEX IF NOT EXISTS idx_chat_messages_timestamp ON chat_messages(timestamp);
 		CREATE INDEX IF NOT EXISTS idx_chat_messages_id ON chat_messages(id);
+
+		CREATE TABLE IF NOT EXISTS game_profiles (
+			user_id INTEGER PRIMARY KEY,
+			username TEXT NOT NULL,
+			gold INTEGER NOT NULL DEFAULT 0,
+			lifetime_kills INTEGER NOT NULL DEFAULT 0,
+			selected_character TEXT NOT NULL DEFAULT 'jaylub',
+			damage_level INTEGER NOT NULL DEFAULT 0,
+			max_hp_level INTEGER NOT NULL DEFAULT 0,
+			attack_speed_level INTEGER NOT NULL DEFAULT 0,
+			move_speed_level INTEGER NOT NULL DEFAULT 0,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		);
+
+		CREATE TABLE IF NOT EXISTS game_leaderboard (
+			user_id INTEGER PRIMARY KEY,
+			username TEXT NOT NULL,
+			total_kills INTEGER NOT NULL DEFAULT 0,
+			best_run_kills INTEGER NOT NULL DEFAULT 0,
+			best_run_seconds INTEGER NOT NULL DEFAULT 0,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_game_leaderboard_total_kills ON game_leaderboard(total_kills DESC);
 	`)
+	if err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("game_leaderboard", "best_run_kills", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("game_leaderboard", "best_run_seconds", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`
+		CREATE INDEX IF NOT EXISTS idx_game_leaderboard_best_run_kills ON game_leaderboard(best_run_kills DESC);
+		CREATE INDEX IF NOT EXISTS idx_game_leaderboard_best_run_seconds ON game_leaderboard(best_run_seconds DESC);
+	`)
+	return err
+}
+
+func (s *Service) addColumnIfMissing(table, column, definition string) error {
+	rows, err := s.db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid int
+		var name string
+		var dataType string
+		var notNull int
+		var defaultValue sql.NullString
+		var primaryKey int
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return err
+		}
+		if name == column {
+			return rows.Err()
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	_, err = s.db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + column + ` ` + definition)
 	return err
 }
 

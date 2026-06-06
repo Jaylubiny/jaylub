@@ -13,6 +13,7 @@ type route struct {
 
 func Basic(authService *auth.Service) http.Handler {
 	chatService := handlers.NewChatService(authService.DB())
+	jayliveService := handlers.NewJayliveService(authService.DB())
 	routes := []route{
 		{"/", handlers.Home},
 		{"/about", handlers.About},
@@ -20,6 +21,11 @@ func Basic(authService *auth.Service) http.Handler {
 		{"/contacts", handlers.Contacts},
 		{"/docs", handlers.Docs},
 		{"/game/test", handlers.GameTest},
+		{"/game/jaylive", jayliveService.Page},
+		{"/game/jaylive/state", jayliveService.State},
+		{"/game/jaylive/shop", jayliveService.BuyUpgrade},
+		{"/game/jaylive/run", jayliveService.SubmitRun},
+		{"/game/jaylive/leaderboard", jayliveService.Leaderboard},
 
 		{"/wiki", handlers.Wiki},
 		{"/wiki/C", handlers.Wiki_C},
