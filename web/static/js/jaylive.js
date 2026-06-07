@@ -3,6 +3,7 @@
   const ctx = canvas.getContext("2d");
   const stage = document.querySelector(".survivor-stage");
   const hud = document.getElementById("gameHud");
+  const fullscreenButtons = document.querySelectorAll("[data-fullscreen-button]");
   const screens = {
     menu: document.getElementById("mainMenu"),
     shop: document.getElementById("shopScreen"),
@@ -20,6 +21,7 @@
     finalTime: document.getElementById("finalTime"),
     finalKills: document.getElementById("finalKills"),
     finalGold: document.getElementById("finalGold"),
+    characterList: document.getElementById("characterList"),
     upgradeList: document.getElementById("upgradeList"),
     leaderboardRows: document.getElementById("leaderboardRows"),
     leaderboardEyebrow: document.getElementById("leaderboardEyebrow"),
@@ -28,6 +30,8 @@
 
   const playerImage = new Image();
   playerImage.src = "/static/img/character.png";
+  const goblinImage = new Image();
+  goblinImage.src = "/static/img/character2.png";
   const enemyImage = new Image();
   enemyImage.src = "/static/img/enemy.png";
   const enemy2Image = new Image();
@@ -66,6 +70,8 @@
   let particles = [];
   let numbers = [];
   let slashes = [];
+  let projectiles = [];
+  let nextEnemyId = 1;
 
   function resizeCanvas() {
     const rect = stage.getBoundingClientRect();
@@ -109,17 +115,80 @@
     document.querySelectorAll("[data-lifetime-kills]").forEach((el) => {
       el.textContent = state.profile?.lifetimeKills ?? 0;
     });
+    renderCharacters();
     renderShop();
     renderLeaderboard();
+  }
+
+  function renderCharacters() {
+    const profile = state.profile || {};
+    const characters = [
+      {
+        id: "jaylub",
+        name: "Jaylub",
+        image: "/static/img/character.png",
+        detail: "Auto melee slash",
+        unlocked: true,
+        cost: 0,
+      },
+      {
+        id: "goblin_jaylub",
+        name: "Goblin Jaylub",
+        image: "/static/img/character2.png",
+        detail: "Shoots projectiles",
+        unlocked: Boolean(profile.goblinJaylubUnlocked),
+        cost: 100,
+      },
+    ];
+
+    ui.characterList.textContent = "";
+    for (const character of characters) {
+      const selected = profile.selectedCharacter === character.id;
+      const slot = document.createElement("div");
+      slot.className = "character-slot";
+      slot.classList.toggle("active", selected);
+
+      const image = document.createElement("img");
+      image.src = character.image;
+      image.alt = character.name;
+
+      const copy = document.createElement("div");
+      const title = document.createElement("strong");
+      title.textContent = character.name;
+      const detail = document.createElement("span");
+      detail.textContent = selected ? "Selected" : character.detail;
+      copy.append(title, detail);
+
+      const button = document.createElement("button");
+      button.className = "pixel-button small";
+      button.type = "button";
+      if (selected) {
+        button.textContent = "Selected";
+        button.disabled = true;
+      } else if (character.unlocked) {
+        button.textContent = "Select";
+        button.addEventListener("click", () => setCharacter("select", character.id));
+      } else {
+        button.textContent = `${character.cost} gold`;
+        button.disabled = (profile.gold || 0) < character.cost;
+        button.addEventListener("click", () => setCharacter("buy", character.id));
+      }
+
+      slot.append(image, copy, button);
+      ui.characterList.append(slot);
+    }
   }
 
   function renderShop() {
     const upgrades = [
       ["damage", "Damage", "+2 damage per level"],
       ["maxHp", "Max HP", "+12 maximum HP per level"],
-      ["attackSpeed", "Attack Speed", "Faster slash cooldown"],
+      ["attackSpeed", "Attack Speed", "Faster automatic attacks"],
       ["moveSpeed", "Move Speed", "Faster movement"],
     ];
+    if (state.profile?.selectedCharacter === "goblin_jaylub") {
+      upgrades.push(["piercing", "Piercing", "Goblin projectiles pass through more enemies"]);
+    }
     ui.upgradeList.textContent = "";
     for (const [id, name, detail] of upgrades) {
       const meta = state.shop[id] || { level: 0, cost: 35 };
@@ -130,14 +199,16 @@
       const title = document.createElement("strong");
       title.textContent = name;
       const sub = document.createElement("span");
-      sub.textContent = `Level ${meta.level} - ${detail}`;
+      const maxText = meta.max ? ` / ${meta.max}` : "";
+      sub.textContent = `Level ${meta.level}${maxText} - ${detail}`;
       copy.append(title, sub);
 
       const button = document.createElement("button");
       button.className = "pixel-button small";
       button.type = "button";
-      button.textContent = `${meta.cost} gold`;
-      button.disabled = (state.profile?.gold ?? 0) < meta.cost;
+      const maxed = Boolean(meta.max && meta.level >= meta.max);
+      button.textContent = maxed ? "Maxed" : `${meta.cost} gold`;
+      button.disabled = maxed || (state.profile?.gold ?? 0) < meta.cost;
       button.addEventListener("click", () => buyUpgrade(id));
 
       row.append(copy, button);
@@ -182,6 +253,19 @@
       method: "POST",
       headers: { "Accept": "application/json", "Content-Type": "application/json" },
       body: JSON.stringify({ upgrade }),
+    });
+    if (!response.ok) return;
+    const data = await response.json();
+    state.profile = data.profile;
+    state.shop = data.shop || {};
+    renderMeta();
+  }
+
+  async function setCharacter(action, character) {
+    const response = await fetch("/game/jaylive/character", {
+      method: "POST",
+      headers: { "Accept": "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ action, character }),
     });
     if (!response.ok) return;
     const data = await response.json();
@@ -242,6 +326,7 @@
       maxHp: stats.maxHp,
       damage: stats.damage,
       speed: stats.speed,
+      character: state.profile?.selectedCharacter || "jaylub",
       attackCooldown: stats.attackCooldown,
       attackTimer: 0,
       invuln: 0,
@@ -256,6 +341,8 @@
     particles = [];
     numbers = [];
     slashes = [];
+    projectiles = [];
+    nextEnemyId = 1;
     state.spawnTimer = 0;
     state.healSpawnTimer = 8 + Math.random() * 10;
     state.shake = 0;
@@ -293,6 +380,7 @@
     if (side === 2) { x = Math.random() * world.width; y = world.height + 40; }
     if (side === 3) { x = -40; y = Math.random() * world.height; }
     enemies.push({
+      id: nextEnemyId++,
       x,
       y,
       type: elite ? "elite" : "normal",
@@ -333,10 +421,12 @@
     updateMouseWorld();
     updatePlayer(dt);
     updateCamera();
+    autoAttack();
     updateSpawns(dt);
     updateHealSpawns(dt);
     updateEnemies(dt);
     updateDrops(dt);
+    updateProjectiles(dt);
     updateEffects(dt);
     updateHud();
 
@@ -464,9 +554,46 @@
     }
   }
 
+  function updateProjectiles(dt) {
+    for (let i = projectiles.length - 1; i >= 0; i--) {
+      const projectile = projectiles[i];
+      projectile.x += projectile.vx * dt;
+      projectile.y += projectile.vy * dt;
+      projectile.life -= dt;
+
+      let hit = false;
+      for (let enemyIndex = enemies.length - 1; enemyIndex >= 0; enemyIndex--) {
+        const enemy = enemies[enemyIndex];
+        if (projectile.hitEnemyIds.has(enemy.id)) continue;
+        if (Math.hypot(projectile.x - enemy.x, projectile.y - enemy.y) > projectile.r + enemy.r) continue;
+
+        projectile.hitEnemyIds.add(enemy.id);
+        enemy.hp -= projectile.damage;
+        enemy.hitTimer = 0.12;
+        numbers.push({ x: enemy.x, y: enemy.y - 28, text: String(projectile.damage), color: "#9bd27b", life: 0.62 });
+        burst(projectile.x, projectile.y, "#7fb069", 8);
+        if (enemy.hp <= 0) killEnemy(enemyIndex);
+        projectile.pierceLeft--;
+        if (projectile.pierceLeft < 0) {
+          hit = true;
+          break;
+        }
+      }
+
+      if (hit || projectile.life <= 0 || projectile.x < 0 || projectile.y < 0 || projectile.x > world.width || projectile.y > world.height) {
+        projectiles.splice(i, 1);
+      }
+    }
+  }
+
   function attack() {
     if (!state.running || state.paused || state.dying || player.attackTimer > 0) return;
     player.attackTimer = player.attackCooldown;
+    if (player.character === "goblin_jaylub") {
+      shootProjectile();
+      return;
+    }
+
     const slash = { x: player.x, y: player.y, angle: player.angle, life: 0.16, maxLife: 0.16 };
     slashes.push(slash);
     state.shake = Math.max(state.shake, 3);
@@ -488,6 +615,29 @@
     for (let i = enemies.length - 1; i >= 0; i--) {
       if (enemies[i].hp <= 0) killEnemy(i);
     }
+  }
+
+  function autoAttack() {
+    attack();
+  }
+
+  function shootProjectile() {
+    const speed = 680;
+    const vx = Math.cos(player.angle) * speed;
+    const vy = Math.sin(player.angle) * speed;
+    projectiles.push({
+      x: player.x + Math.cos(player.angle) * 32,
+      y: player.y + Math.sin(player.angle) * 32,
+      vx,
+      vy,
+      r: 8,
+      damage: player.damage,
+      pierceLeft: state.profile?.piercingLevel || 0,
+      hitEnemyIds: new Set(),
+      life: 1.15,
+      angle: player.angle,
+    });
+    state.shake = Math.max(state.shake, 2);
   }
 
   function killEnemy(index) {
@@ -554,6 +704,7 @@
     particles = [];
     numbers = [];
     slashes = [];
+    projectiles = [];
     showScreen("menu");
   }
 
@@ -600,6 +751,7 @@
     if (player) {
       drawPlayer();
       for (const slash of slashes) drawSlash(slash);
+      for (const projectile of projectiles) drawProjectile(projectile);
     }
     for (const p of particles) drawParticle(p);
     for (const n of numbers) drawNumber(n);
@@ -634,15 +786,16 @@
   }
 
   function drawPlayer() {
+    const image = player.character === "goblin_jaylub" ? goblinImage : playerImage;
     ctx.save();
     ctx.translate(Math.round(player.x), Math.round(player.y));
     ctx.rotate(player.angle);
     ctx.fillStyle = "rgba(0, 0, 0, 0.28)";
     ctx.fillRect(-22, 18, 44, 10);
-    if (playerImage.complete && playerImage.naturalWidth) {
-      ctx.drawImage(playerImage, -28, -28, 56, 56);
+    if (image.complete && image.naturalWidth) {
+      ctx.drawImage(image, -28, -28, 56, 56);
     } else {
-      ctx.fillStyle = "#d5a43a";
+      ctx.fillStyle = player.character === "goblin_jaylub" ? "#7fb069" : "#d5a43a";
       ctx.fillRect(-24, -24, 48, 48);
     }
     ctx.fillStyle = "#e7dfc9";
@@ -689,6 +842,19 @@
     ctx.fillRect(36, -26, 12, 52);
     ctx.fillStyle = "#f1ead7";
     ctx.fillRect(48, -14, 28, 28);
+    ctx.restore();
+  }
+
+  function drawProjectile(projectile) {
+    ctx.save();
+    ctx.translate(projectile.x, projectile.y);
+    ctx.rotate(projectile.angle);
+    ctx.fillStyle = "#0a0d0e";
+    ctx.fillRect(-8, -8, 20, 16);
+    ctx.fillStyle = "#7fb069";
+    ctx.fillRect(-5, -5, 16, 10);
+    ctx.fillStyle = "#c8e6a0";
+    ctx.fillRect(4, -3, 5, 4);
     ctx.restore();
   }
 
@@ -796,6 +962,21 @@
     return `${mins}:${String(secs).padStart(2, "0")}`;
   }
 
+  async function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      await stage.requestFullscreen();
+      return;
+    }
+    await document.exitFullscreen();
+  }
+
+  function updateFullscreenButton() {
+    const label = document.fullscreenElement === stage ? "Exit Fullscreen" : "Fullscreen";
+    fullscreenButtons.forEach((button) => {
+      button.textContent = label;
+    });
+  }
+
   function loop(now) {
     const dt = Math.min(0.033, (now - state.lastTime) / 1000);
     state.lastTime = now;
@@ -809,6 +990,11 @@
   document.getElementById("mainMenuButton").addEventListener("click", () => showScreen("menu"));
   document.getElementById("continueButton").addEventListener("click", resumeRun);
   document.getElementById("quitButton").addEventListener("click", quitRun);
+  fullscreenButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      toggleFullscreen().catch(() => {});
+    });
+  });
   document.getElementById("shopButton").addEventListener("click", () => {
     renderShop();
     showScreen("shop");
@@ -826,7 +1012,7 @@
   });
 
   window.addEventListener("keydown", (event) => {
-    if (["KeyW", "KeyA", "KeyS", "KeyD", "Space", "Escape"].includes(event.code)) {
+    if (["KeyW", "KeyA", "KeyS", "KeyD", "Escape"].includes(event.code)) {
       event.preventDefault();
     }
     if (event.code === "Escape") {
@@ -834,7 +1020,6 @@
       else pauseRun();
       return;
     }
-    if (event.code === "Space") attack();
     if (state.paused) return;
     keys.add(event.code);
   });
@@ -844,8 +1029,13 @@
     mouse.y = event.clientY;
   });
   window.addEventListener("resize", resizeCanvas);
+  document.addEventListener("fullscreenchange", () => {
+    updateFullscreenButton();
+    resizeCanvas();
+  });
 
   resizeCanvas();
+  updateFullscreenButton();
   showScreen("menu");
   loadState().catch(() => {});
   requestAnimationFrame(loop);

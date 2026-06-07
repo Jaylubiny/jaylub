@@ -103,10 +103,12 @@ func (s *Service) initSchema() error {
 			gold INTEGER NOT NULL DEFAULT 0,
 			lifetime_kills INTEGER NOT NULL DEFAULT 0,
 			selected_character TEXT NOT NULL DEFAULT 'jaylub',
+			goblin_jaylub_unlocked INTEGER NOT NULL DEFAULT 0,
 			damage_level INTEGER NOT NULL DEFAULT 0,
 			max_hp_level INTEGER NOT NULL DEFAULT 0,
 			attack_speed_level INTEGER NOT NULL DEFAULT 0,
 			move_speed_level INTEGER NOT NULL DEFAULT 0,
+			piercing_level INTEGER NOT NULL DEFAULT 0,
 			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		);
@@ -130,6 +132,12 @@ func (s *Service) initSchema() error {
 		return err
 	}
 	if err := s.addColumnIfMissing("game_leaderboard", "best_run_seconds", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("game_profiles", "goblin_jaylub_unlocked", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("game_profiles", "piercing_level", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
 	_, err = s.db.Exec(`

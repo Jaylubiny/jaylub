@@ -7,6 +7,7 @@
 <section class="survivor-shell" data-username="{{.Username}}" aria-label="Jaylive arena survival game">
   <div class="survivor-stage">
     <canvas id="survivorCanvas" width="960" height="540" aria-label="Top-down 2D survival arena"></canvas>
+    <button class="fullscreen-button" id="fullscreenButton" type="button" aria-label="Toggle fullscreen" data-fullscreen-button>Fullscreen</button>
 
     <div class="game-hud" id="gameHud" hidden>
       <div class="hud-panel hp-panel">
@@ -33,6 +34,7 @@
           <button class="pixel-button" id="playButton" type="button">Play</button>
           <button class="pixel-button muted" id="leaderboardButton" type="button">Leaderboards</button>
           <button class="pixel-button muted" id="shopButton" type="button">Shop</button>
+          <button class="pixel-button muted" type="button" data-fullscreen-button>Fullscreen</button>
         </div>
       </div>
     </div>
@@ -49,13 +51,7 @@
         <div class="shop-layout">
           <section class="character-panel">
             <h3>Character</h3>
-            <div class="character-slot active">
-              <img src="/static/img/character.png" alt="Jaylub">
-              <div>
-                <strong>Jaylub</strong>
-                <span>Selected</span>
-              </div>
-            </div>
+            <div id="characterList" class="character-list"></div>
             <div class="locked-grid">
               <div class="locked-slot">?</div>
               <div class="locked-slot">?</div>

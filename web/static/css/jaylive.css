@@ -37,6 +37,38 @@ main {
   image-rendering: pixelated;
 }
 
+.survivor-stage:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  min-height: 100vh;
+  aspect-ratio: auto;
+  border: 0;
+  box-shadow: none;
+}
+
+.fullscreen-button {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 8;
+  min-height: 34px;
+  padding: 6px 10px;
+  color: var(--pixel-text);
+  background: rgba(23, 27, 28, 0.9);
+  border: 3px solid var(--pixel-border);
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  font-family: "Courier New", monospace;
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.fullscreen-button:hover {
+  color: #151718;
+  background: var(--pixel-gold);
+}
+
 #survivorCanvas {
   display: block;
   width: 100%;
@@ -256,6 +288,11 @@ main {
   min-width: 0;
 }
 
+.character-list {
+  display: grid;
+  gap: 10px;
+}
+
 .character-slot,
 .upgrade-row {
   display: flex;
@@ -266,6 +303,10 @@ main {
   padding: 12px;
   background: rgba(23, 27, 28, 0.72);
   border: 3px solid #4b4538;
+}
+
+.character-slot.active {
+  border-color: var(--pixel-gold);
 }
 
 .character-slot img {
@@ -291,6 +332,10 @@ main {
 .upgrade-row span {
   color: var(--pixel-muted);
   font-size: 0.88rem;
+}
+
+.character-slot button {
+  min-width: 96px;
 }
 
 .locked-grid {

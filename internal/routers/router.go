@@ -20,10 +20,12 @@ func Basic(authService *auth.Service) http.Handler {
 		{"/me", handlers.Me},
 		{"/contacts", handlers.Contacts},
 		{"/docs", handlers.Docs},
+		{"/documentation", handlers.Docs},
 		{"/game/test", handlers.GameTest},
 		{"/game/jaylive", jayliveService.Page},
 		{"/game/jaylive/state", jayliveService.State},
 		{"/game/jaylive/shop", jayliveService.BuyUpgrade},
+		{"/game/jaylive/character", jayliveService.Character},
 		{"/game/jaylive/run", jayliveService.SubmitRun},
 		{"/game/jaylive/leaderboard", jayliveService.Leaderboard},
 

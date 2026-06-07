@@ -23,7 +23,9 @@ type JayliveProfile struct {
 	Gold              int    `json:"gold"`
 	LifetimeKills     int    `json:"lifetimeKills"`
 	SelectedCharacter string `json:"selectedCharacter"`
+	GoblinUnlocked    bool   `json:"goblinJaylubUnlocked"`
 	DamageLevel       int    `json:"damageLevel"`
+	PiercingLevel     int    `json:"piercingLevel"`
 	MaxHPLevel        int    `json:"maxHpLevel"`
 	AttackSpeedLevel  int    `json:"attackSpeedLevel"`
 	MoveSpeedLevel    int    `json:"moveSpeedLevel"`
@@ -112,7 +114,7 @@ func (s *JayliveService) BuyUpgrade(w http.ResponseWriter, r *http.Request) {
 	}
 
 	profile, err := scanJayliveProfile(tx.QueryRow(`
-		SELECT username, gold, lifetime_kills, selected_character, damage_level, max_hp_level, attack_speed_level, move_speed_level
+		SELECT username, gold, lifetime_kills, selected_character, goblin_jaylub_unlocked, damage_level, piercing_level, max_hp_level, attack_speed_level, move_speed_level
 		FROM game_profiles
 		WHERE user_id = ?
 	`, user.ID))
@@ -122,6 +124,14 @@ func (s *JayliveService) BuyUpgrade(w http.ResponseWriter, r *http.Request) {
 	}
 
 	level := upgradeLevel(profile, upgrade)
+	if upgrade == "piercing" && !profile.GoblinUnlocked {
+		http.Error(w, "Goblin Jaylub is locked.", http.StatusBadRequest)
+		return
+	}
+	if upgrade == "piercing" && level >= 10 {
+		http.Error(w, "Piercing is already maxed.", http.StatusBadRequest)
+		return
+	}
 	cost := upgradeCost(level)
 	if profile.Gold < cost {
 		http.Error(w, "Not enough gold.", http.StatusBadRequest)
@@ -133,6 +143,106 @@ func (s *JayliveService) BuyUpgrade(w http.ResponseWriter, r *http.Request) {
 		SET gold = gold - ?, `+column+` = `+column+` + 1, username = ?, updated_at = ?
 		WHERE user_id = ?
 	`, cost, user.Username, time.Now().UTC().Format(time.RFC3339), user.ID)
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	profile, err = s.profile(r)
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	writeGameJSON(w, map[string]any{
+		"profile": profile,
+		"shop":    shopState(profile),
+	})
+}
+
+func (s *JayliveService) Character(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var payload struct {
+		Action    string `json:"action"`
+		Character string `json:"character"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&payload); err != nil {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	if err := ensureJayliveProfile(tx, user); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	profile, err := scanJayliveProfile(tx.QueryRow(`
+		SELECT username, gold, lifetime_kills, selected_character, goblin_jaylub_unlocked, damage_level, piercing_level, max_hp_level, attack_speed_level, move_speed_level
+		FROM game_profiles
+		WHERE user_id = ?
+	`, user.ID))
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	switch payload.Action {
+	case "buy":
+		if payload.Character != "goblin_jaylub" {
+			http.Error(w, "Unknown character.", http.StatusBadRequest)
+			return
+		}
+		if profile.GoblinUnlocked {
+			break
+		}
+		if profile.Gold < 100 {
+			http.Error(w, "Not enough gold.", http.StatusBadRequest)
+			return
+		}
+		_, err = tx.Exec(`
+			UPDATE game_profiles
+			SET gold = gold - 100, goblin_jaylub_unlocked = 1, selected_character = 'goblin_jaylub', username = ?, updated_at = ?
+			WHERE user_id = ?
+		`, user.Username, time.Now().UTC().Format(time.RFC3339), user.ID)
+	case "select":
+		if payload.Character != "jaylub" && payload.Character != "goblin_jaylub" {
+			http.Error(w, "Unknown character.", http.StatusBadRequest)
+			return
+		}
+		if payload.Character == "goblin_jaylub" && !profile.GoblinUnlocked {
+			http.Error(w, "Character is locked.", http.StatusBadRequest)
+			return
+		}
+		_, err = tx.Exec(`
+			UPDATE game_profiles
+			SET selected_character = ?, username = ?, updated_at = ?
+			WHERE user_id = ?
+		`, payload.Character, user.Username, time.Now().UTC().Format(time.RFC3339), user.ID)
+	default:
+		http.Error(w, "Unknown action.", http.StatusBadRequest)
+		return
+	}
 	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
@@ -281,7 +391,7 @@ func (s *JayliveService) profile(r *http.Request) (JayliveProfile, error) {
 		return JayliveProfile{}, err
 	}
 	return scanJayliveProfile(s.db.QueryRow(`
-		SELECT username, gold, lifetime_kills, selected_character, damage_level, max_hp_level, attack_speed_level, move_speed_level
+		SELECT username, gold, lifetime_kills, selected_character, goblin_jaylub_unlocked, damage_level, piercing_level, max_hp_level, attack_speed_level, move_speed_level
 		FROM game_profiles
 		WHERE user_id = ?
 	`, user.ID))
@@ -341,16 +451,20 @@ func ensureJayliveProfile(tx *sql.Tx, user auth.User) error {
 
 func scanJayliveProfile(row interface{ Scan(dest ...any) error }) (JayliveProfile, error) {
 	var profile JayliveProfile
+	var goblinUnlocked int
 	err := row.Scan(
 		&profile.Username,
 		&profile.Gold,
 		&profile.LifetimeKills,
 		&profile.SelectedCharacter,
+		&goblinUnlocked,
 		&profile.DamageLevel,
+		&profile.PiercingLevel,
 		&profile.MaxHPLevel,
 		&profile.AttackSpeedLevel,
 		&profile.MoveSpeedLevel,
 	)
+	profile.GoblinUnlocked = goblinUnlocked == 1
 	return profile, err
 }
 
@@ -364,6 +478,8 @@ func upgradeColumn(upgrade string) (string, error) {
 		return "attack_speed_level", nil
 	case "moveSpeed":
 		return "move_speed_level", nil
+	case "piercing":
+		return "piercing_level", nil
 	default:
 		return "", errors.New("Unknown upgrade.")
 	}
@@ -379,6 +495,8 @@ func upgradeLevel(profile JayliveProfile, upgrade string) int {
 		return profile.AttackSpeedLevel
 	case "moveSpeed":
 		return profile.MoveSpeedLevel
+	case "piercing":
+		return profile.PiercingLevel
 	default:
 		return 0
 	}
@@ -405,6 +523,11 @@ func shopState(profile JayliveProfile) map[string]map[string]int {
 		"moveSpeed": {
 			"level": profile.MoveSpeedLevel,
 			"cost":  upgradeCost(profile.MoveSpeedLevel),
+		},
+		"piercing": {
+			"level": profile.PiercingLevel,
+			"cost":  upgradeCost(profile.PiercingLevel),
+			"max":   10,
 		},
 	}
 }
