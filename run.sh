@@ -12,13 +12,9 @@ echo "Building full server..."
 go build -o "$BIN_PATH" ./cmd/server
 
 echo "Starting full server..."
-nohup "$BIN_PATH" > "$LOG_FILE" 2>&1 &
+setsid "$BIN_PATH" > "$LOG_FILE" 2>&1 < /dev/null &
 SERVER_PID=$!
 echo "$SERVER_PID" > "$PID_FILE"
-
-if command -v disown >/dev/null 2>&1; then
-	disown "$SERVER_PID" || true
-fi
 
 echo "Server PID: $SERVER_PID"
 echo "PID file: $PID_FILE"

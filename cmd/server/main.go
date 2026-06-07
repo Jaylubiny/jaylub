@@ -30,7 +30,8 @@ func main() {
 		go startServer(srv)
 	}
 
-	startServer(servers[len(servers)-1])
+	go startServer(servers[len(servers)-1])
+	select {}
 }
 
 func startServer(srv server) {
