@@ -1,12 +1,17 @@
 package handlers
 
 import (
+	"database/sql"
 	"jaylub/internal/views"
 	"net/http"
 	"os"
 )
 
 var renderer = views.NewRenderer("web/templates")
+
+func UseStatsDB(db *sql.DB) {
+	renderer.SetDB(db)
+}
 
 var (
 	Home        = renderer.Page("home")

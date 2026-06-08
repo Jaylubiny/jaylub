@@ -1,21 +1,17 @@
 #cursor {
-    position: fixed;
-    width: 15px;
-    height: 15px;
-    border-radius: 50%;
-    background: #38bdf8;
-    pointer-events: none;
-    transform: translate(-50%, -50%);
-    box-shadow: 0 0 15px #38bdf8;
-    z-index: 9999;
+    display: none;
 }
 
 :root {
-  --bg: #0f172a;
-  --card: #111827;
-  --text: #e5e7eb;
-  --muted: #94a3b8;
-  --accent: #38bdf8;
+  --bg: #050505;
+  --bg-soft: #0a0a0a;
+  --card: #111111;
+  --text: #f5f3ff;
+  --muted: #a1a1aa;
+  --accent: #8b5cf6;
+  --accent-2: #a855f7;
+  --accent-glow: rgba(139, 92, 246, 0.35);
+  --border-purple: rgba(139, 92, 246, 0.15);
 }
 
 
@@ -27,7 +23,9 @@
 }
 
 body {
-  background: radial-gradient(circle at top, #1e293b, var(--bg));
+  background:
+    radial-gradient(circle at var(--cursor-x, 50%) var(--cursor-y, -10%), rgba(139, 92, 246, 0.24), transparent 46rem),
+    linear-gradient(180deg, #0a0a0a, var(--bg));
   color: var(--text);
   min-height: 100vh;
   display: flex;
@@ -40,9 +38,9 @@ nav {
   justify-content: space-between;
   gap: 20px;
   padding: 16px 24px;
-  background: rgba(17, 24, 39, 0.8);
+  background: rgba(5, 5, 5, 0.86);
   backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+  border-bottom: 1px solid var(--border-purple);
   position: sticky;
   top: 0;
   z-index: 1000;
@@ -79,15 +77,16 @@ nav a:hover {
   min-height: 40px;
   padding: 4px 12px 4px 4px;
   color: var(--text);
-  background: rgba(2, 6, 23, 0.35);
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(17, 17, 17, 0.86);
+  border: 1px solid var(--border-purple);
   border-radius: 999px;
   cursor: pointer;
   font-weight: 600;
 }
 
 .profile-button:hover {
-  border-color: rgba(56, 189, 248, 0.5);
+  border-color: rgba(139, 92, 246, 0.5);
+  box-shadow: 0 0 22px var(--accent-glow);
 }
 
 .profile-avatar {
@@ -96,8 +95,8 @@ nav a:hover {
   height: 32px;
   place-items: center;
   border-radius: 50%;
-  color: #020617;
-  background: var(--accent);
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -113,11 +112,11 @@ nav a:hover {
   position: absolute;
   top: calc(100% + 10px);
   right: 0;
-  min-width: 150px;
-  padding: 6px;
+  width: min(320px, calc(100vw - 32px));
+  padding: 10px;
   background: var(--card);
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 8px;
+  border: 1px solid var(--border-purple);
+  border-radius: 14px;
   box-shadow: 0 14px 45px rgba(0, 0, 0, 0.45);
 }
 
@@ -140,7 +139,40 @@ nav a:hover {
 
 .user-dropdown button:hover {
   color: var(--accent);
-  background: rgba(148, 163, 184, 0.08);
+  background: rgba(139, 92, 246, 0.12);
+}
+
+.profile-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.profile-stat {
+  min-width: 0;
+  padding: 10px;
+  background: rgba(10, 10, 10, 0.76);
+  border: 1px solid rgba(139, 92, 246, 0.15);
+  border-radius: 10px;
+}
+
+.profile-stat span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.profile-stat strong {
+  display: block;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.96rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 main {
@@ -148,10 +180,10 @@ main {
   max-width: 900px;
   margin: 40px auto;
   padding: 24px;
-  background: rgba(17, 24, 39, 0.6);
-  border: 1px solid rgba(148, 163, 184, 0.15);
+  background: rgba(10, 10, 10, 0.78);
+  border: 1px solid var(--border-purple);
   border-radius: 16px;
-  box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+  box-shadow: 0 18px 60px rgba(0,0,0,0.5), 0 0 45px rgba(139, 92, 246, 0.08);
 }
 
 h1, h2, h3 {
@@ -195,11 +227,6 @@ p {
     padding-right: 4px;
   }
 }
-
-
-
-
-
 
 
 

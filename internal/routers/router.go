@@ -12,6 +12,7 @@ type route struct {
 }
 
 func Basic(authService *auth.Service) http.Handler {
+	handlers.UseStatsDB(authService.DB())
 	chatService := handlers.NewChatService(authService.DB())
 	jayliveService := handlers.NewJayliveService(authService.DB())
 	routes := []route{

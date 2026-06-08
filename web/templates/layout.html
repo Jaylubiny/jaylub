@@ -5,10 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>{{.Title}}</title>
   <link rel="icon" href="/web/static/img/icon.png" type="image/png">
-  <link rel="stylesheet" href="/web/static/css/layout.css?v=auth-profile-2" />
-  <link rel="stylesheet" href="/web/static/css/components.css?v=1" />
-  <script src="/web/static/js/layout.js?v=auth-profile-2" defer></script>
+  <link rel="stylesheet" href="/web/static/css/layout.css?v=profile-stats-1" />
+  <link rel="stylesheet" href="/web/static/css/components.css?v=purple-1" />
+  <script src="/web/static/js/layout.js?v=purple-light-1" defer></script>
   {{block "head" .}}{{end}}
+  {{if ne .Title "jaylive"}}
+  <link rel="stylesheet" href="/web/static/css/theme.css?v=profile-stats-1" />
+  {{end}}
 </head>
 
 <body>
@@ -31,6 +34,28 @@
       <span class="profile-name">{{.Username}}</span>
     </button>
     <div class="user-dropdown" data-user-dropdown hidden>
+      <div class="profile-stats" aria-label="Profile stats">
+        <div class="profile-stat">
+          <span>Messages</span>
+          <strong>{{.Stats.MessagesSent}}</strong>
+        </div>
+        <div class="profile-stat">
+          <span>Gold</span>
+          <strong>{{.Stats.Gold}}</strong>
+        </div>
+        <div class="profile-stat">
+          <span>Lifetime Kills</span>
+          <strong>{{.Stats.LifetimeKills}}</strong>
+        </div>
+        <div class="profile-stat">
+          <span>Best Run Kills</span>
+          <strong>{{.Stats.BestRunKills}}</strong>
+        </div>
+        <div class="profile-stat">
+          <span>Best Time</span>
+          <strong>{{.Stats.BestRunTime}}</strong>
+        </div>
+      </div>
       <form method="post" action="/logout">
         <button type="submit">Logout</button>
       </form>

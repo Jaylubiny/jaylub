@@ -1,14 +1,18 @@
 document.addEventListener("DOMContentLoaded", () => {
 
+    let pendingCursorFrame = 0;
     document.addEventListener("mousemove", (e) => {
-        const x = e.clientX / window.innerWidth;
-        const y = e.clientY / window.innerHeight;
+        const x = `${e.clientX}px`;
+        const y = `${e.clientY}px`;
 
-        document.body.style.background = `
-            radial-gradient(circle at ${x * 100}% ${y * 100}%,
-            #1e293b,
-            #020617)
-        `;
+        if (pendingCursorFrame) {
+            cancelAnimationFrame(pendingCursorFrame);
+        }
+        pendingCursorFrame = requestAnimationFrame(() => {
+            document.documentElement.style.setProperty("--cursor-x", x);
+            document.documentElement.style.setProperty("--cursor-y", y);
+            pendingCursorFrame = 0;
+        });
     });
 
     const menu = document.querySelector("[data-user-menu]");

@@ -1,0 +1,351 @@
+:root {
+  --theme-bg: #050505;
+  --theme-bg-2: #0a0a0a;
+  --theme-surface: #111111;
+  --theme-surface-2: #161616;
+  --theme-purple: #8b5cf6;
+  --theme-purple-2: #a855f7;
+  --theme-glow: rgba(139, 92, 246, 0.35);
+  --theme-border: rgba(139, 92, 246, 0.15);
+  --theme-border-strong: rgba(139, 92, 246, 0.48);
+  --theme-text: #f5f3ff;
+  --theme-muted: #a1a1aa;
+  --theme-muted-2: #71717a;
+  --theme-radius: 14px;
+  --theme-radius-sm: 12px;
+  --theme-shadow: 0 18px 55px rgba(0, 0, 0, 0.48), 0 0 34px rgba(139, 92, 246, 0.08);
+  --theme-shadow-hover: 0 22px 62px rgba(0, 0, 0, 0.54), 0 0 34px var(--theme-glow);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background:
+    radial-gradient(circle at var(--cursor-x, 50%) var(--cursor-y, -12rem), rgba(139, 92, 246, 0.24), transparent 48rem),
+    linear-gradient(180deg, var(--theme-bg-2), var(--theme-bg)) !important;
+  color: var(--theme-text);
+}
+
+main {
+  background: rgba(10, 10, 10, 0.82) !important;
+  border: 1px solid var(--theme-border) !important;
+  box-shadow: var(--theme-shadow) !important;
+}
+
+nav {
+  background: rgba(5, 5, 5, 0.9) !important;
+  border-bottom: 1px solid var(--theme-border) !important;
+  box-shadow: 0 12px 38px rgba(0, 0, 0, 0.42);
+}
+
+nav a {
+  color: var(--theme-muted);
+}
+
+nav a:hover,
+nav a:focus-visible {
+  color: var(--theme-purple-2);
+  text-shadow: 0 0 18px var(--theme-glow);
+}
+
+nav a[aria-current="page"],
+nav a.active {
+  color: var(--theme-text);
+}
+
+h1,
+h2,
+h3,
+.logo,
+.section-title {
+  color: var(--theme-text) !important;
+  letter-spacing: 0;
+}
+
+h1::selection,
+h2::selection,
+h3::selection,
+p::selection,
+a::selection,
+span::selection,
+strong::selection {
+  color: #fff;
+  background: rgba(139, 92, 246, 0.55);
+}
+
+p,
+li,
+.subtitle,
+.section-copy,
+.feature-card p,
+.card p,
+.contacts-page .card p,
+.pixel-card p {
+  color: var(--theme-muted) !important;
+}
+
+a {
+  text-decoration-color: rgba(139, 92, 246, 0.55);
+}
+
+a:not(.card):not(.feature-card):not(.action-button):not(.pixel-button):not(.home-button):not(nav a) {
+  color: var(--theme-purple-2);
+}
+
+.section-kicker,
+.card h2,
+.card h3,
+.feature-card h2,
+.feature-card h3,
+.contacts-page .card h2,
+.about-page .card h2,
+.docs-page h2,
+.logo {
+  color: var(--theme-purple-2) !important;
+}
+
+.section-panel,
+.feature-card,
+.card,
+.link-card,
+.contact-card,
+.contribution-card,
+.bot-card,
+.service-card,
+.doc-card,
+.info-card,
+.login-card,
+.modal,
+.chat-shell,
+.chat-message,
+.user-dropdown,
+.pixel-card,
+.character-slot,
+.upgrade-row,
+.leaderboard-table,
+.note-card {
+  background: var(--theme-surface) !important;
+  border: 1px solid var(--theme-border) !important;
+  border-radius: var(--theme-radius) !important;
+  box-shadow: var(--theme-shadow) !important;
+}
+
+.feature-card,
+.card,
+.link-card,
+.section-panel,
+.contact-card,
+.contribution-card,
+.pixel-card,
+.character-slot,
+.upgrade-row,
+.chat-message {
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.feature-card:hover,
+.card:hover,
+.link-card:hover,
+.contact-card:hover,
+.contribution-card:hover,
+.character-slot:hover,
+.upgrade-row:hover,
+.chat-message:hover {
+  background: var(--theme-surface-2) !important;
+  border-color: var(--theme-border-strong) !important;
+  box-shadow: var(--theme-shadow-hover) !important;
+  transform: translateY(-3px);
+}
+
+.feature-card::before,
+.card::before,
+.link-card::before {
+  background: radial-gradient(circle at top left, rgba(139, 92, 246, 0.22), transparent 58%) !important;
+}
+
+.action-button,
+.btn,
+.home-button,
+.login-submit,
+.create-account-button,
+.chat-form button,
+.card button,
+.pixel-button,
+.fullscreen-button,
+button[type="submit"]:not(.profile-button),
+button[type="button"]:not(.profile-button) {
+  color: #fff !important;
+  background: linear-gradient(135deg, var(--theme-purple), var(--theme-purple-2)) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: var(--theme-radius-sm) !important;
+  box-shadow: 0 12px 30px rgba(139, 92, 246, 0.2) !important;
+  text-decoration: none !important;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.action-button:hover,
+.btn:hover,
+.home-button:hover,
+.login-submit:hover,
+.create-account-button:hover,
+.chat-form button:hover,
+.card button:hover,
+.pixel-button:hover,
+.fullscreen-button:hover,
+button[type="submit"]:not(.profile-button):hover,
+button[type="button"]:not(.profile-button):hover {
+  background: linear-gradient(135deg, var(--theme-purple-2), var(--theme-purple)) !important;
+  border-color: var(--theme-border-strong) !important;
+  box-shadow: 0 16px 36px var(--theme-glow) !important;
+  transform: translateY(-2px);
+}
+
+.action-button.secondary,
+.pixel-button.muted,
+.leaderboard-tabs .pixel-button.muted,
+.create-account-button,
+.contact-link {
+  color: var(--theme-text) !important;
+  background: rgba(17, 17, 17, 0.88) !important;
+  border: 1px solid var(--theme-border) !important;
+}
+
+.action-button.secondary:hover,
+.pixel-button.muted:hover,
+.leaderboard-tabs .pixel-button.muted:hover,
+.create-account-button:hover,
+.contact-link:hover {
+  background: rgba(139, 92, 246, 0.16) !important;
+}
+
+.user-dropdown button[type="submit"] {
+  color: var(--theme-text) !important;
+  background: rgba(17, 17, 17, 0.88) !important;
+  border: 1px solid var(--theme-border) !important;
+  box-shadow: none !important;
+}
+
+.user-dropdown button[type="submit"]:hover {
+  color: #fff !important;
+  background: rgba(139, 92, 246, 0.16) !important;
+  border-color: var(--theme-border-strong) !important;
+  box-shadow: 0 0 24px rgba(139, 92, 246, 0.18) !important;
+  transform: translateY(-1px);
+}
+
+.profile-stat {
+  background: rgba(10, 10, 10, 0.76) !important;
+  border: 1px solid var(--theme-border) !important;
+  box-shadow: none !important;
+}
+
+.profile-stat span {
+  color: var(--theme-muted) !important;
+}
+
+.profile-stat strong {
+  color: var(--theme-text) !important;
+}
+
+button:disabled,
+.pixel-button:disabled,
+.chat-form button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  filter: grayscale(0.25);
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+input,
+textarea,
+select,
+.chat-form textarea,
+.login-form input {
+  color: var(--theme-text) !important;
+  background: #0a0a0a !important;
+  border: 1px solid var(--theme-border) !important;
+  border-radius: var(--theme-radius-sm) !important;
+  caret-color: var(--theme-purple-2);
+}
+
+input:focus,
+textarea:focus,
+select:focus,
+.chat-form textarea:focus,
+.login-form input:focus {
+  outline: none !important;
+  border-color: var(--theme-border-strong) !important;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.18), 0 0 22px rgba(139, 92, 246, 0.18) !important;
+}
+
+label {
+  color: var(--theme-text);
+}
+
+table,
+pre,
+code,
+.docs-diagram,
+.chat-list,
+.leaderboard-table,
+.hp-bar {
+  background: #0a0a0a !important;
+  border-color: var(--theme-border) !important;
+}
+
+th,
+td {
+  border-color: var(--theme-border) !important;
+}
+
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--theme-purple), var(--theme-purple-2));
+  border: 3px solid #0a0a0a;
+  border-radius: 999px;
+}
+
+@supports (scrollbar-color: auto) {
+  * {
+    scrollbar-color: var(--theme-purple) #0a0a0a;
+  }
+}
+
+.profile-button {
+  background: rgba(17, 17, 17, 0.9) !important;
+  border-color: var(--theme-border) !important;
+}
+
+.profile-button:hover {
+  border-color: var(--theme-border-strong) !important;
+}
+
+.profile-avatar {
+  background: linear-gradient(135deg, var(--theme-purple), var(--theme-purple-2)) !important;
+  color: #fff !important;
+}
+
+.footer {
+  color: var(--theme-muted-2) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
