@@ -4,6 +4,9 @@
   display: grid;
   place-items: center;
   padding: 0;
+  background:
+    radial-gradient(circle at var(--cursor-x, 50%) var(--cursor-y, -10%), rgba(139, 92, 246, 0.24), transparent 46rem),
+    linear-gradient(180deg, #0a0a0a, #050505);
 }
 
 .login-page #cursor {
@@ -21,10 +24,10 @@
 
 .login-panel {
   padding: 28px;
-  background: rgba(17, 24, 39, 0.78);
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 8px;
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+  background: rgba(17, 17, 17, 0.86);
+  border: 1px solid rgba(139, 92, 246, 0.15);
+  border-radius: 16px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.52), 0 0 36px rgba(139, 92, 246, 0.12);
   backdrop-filter: blur(12px);
 }
 
@@ -41,10 +44,10 @@
   height: 44px;
   place-items: center;
   border-radius: 50%;
-  color: #020617;
-  background: var(--accent);
+  color: #fff;
+  background: linear-gradient(135deg, #8b5cf6, #a855f7);
   font-weight: 800;
-  box-shadow: 0 0 24px rgba(56, 189, 248, 0.28);
+  box-shadow: 0 0 24px rgba(139, 92, 246, 0.35);
 }
 
 .login-brand h1 {
@@ -80,44 +83,55 @@
   min-height: 44px;
   padding: 10px 12px;
   color: var(--text);
-  background: rgba(2, 6, 23, 0.55);
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  border-radius: 8px;
+  background: #0a0a0a;
+  border: 1px solid rgba(139, 92, 246, 0.18);
+  border-radius: 12px;
   outline: none;
 }
 
 .login-form input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.16);
+  border-color: rgba(139, 92, 246, 0.5);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.18), 0 0 22px rgba(139, 92, 246, 0.18);
 }
 
 .login-submit,
 .create-account-button {
   min-height: 44px;
-  border: 0;
-  border-radius: 8px;
+  border: 1px solid rgba(139, 92, 246, 0.15);
+  border-radius: 12px;
   cursor: pointer;
   font-weight: 700;
-  transition: 0.2s ease;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
 }
 
 .login-submit {
   margin-top: 12px;
-  color: #020617;
-  background: var(--accent);
+  color: #fff;
+  background: linear-gradient(135deg, #8b5cf6, #a855f7);
+  box-shadow: 0 12px 30px rgba(139, 92, 246, 0.2);
 }
 
 .create-account-button {
   width: 100%;
   margin-top: 12px;
   color: var(--text);
-  background: rgba(148, 163, 184, 0.12);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(17, 17, 17, 0.88);
+  border: 1px solid rgba(139, 92, 246, 0.15);
 }
 
 .login-submit:hover,
 .create-account-button:hover {
   transform: translateY(-1px);
+  border-color: rgba(139, 92, 246, 0.48);
+  box-shadow: 0 16px 36px rgba(139, 92, 246, 0.35);
+}
+
+.login-submit:hover {
+  background: linear-gradient(135deg, #a855f7, #8b5cf6);
+}
+
+.create-account-button:hover {
+  background: rgba(139, 92, 246, 0.16);
 }
 
 .signup-modal[hidden] {
@@ -136,7 +150,7 @@
 .signup-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(2, 6, 23, 0.72);
+  background: rgba(5, 5, 5, 0.76);
   backdrop-filter: blur(4px);
 }
 
@@ -145,10 +159,10 @@
   width: min(100%, 390px);
   padding: 24px;
   color: var(--text);
-  background: var(--card);
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 8px;
-  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.55);
+  background: #111111;
+  border: 1px solid rgba(139, 92, 246, 0.15);
+  border-radius: 16px;
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.58), 0 0 34px rgba(139, 92, 246, 0.12);
 }
 
 .signup-dialog h2 {
@@ -160,7 +174,7 @@
 }
 
 .signup-dialog a {
-  color: var(--accent);
+  color: #a855f7;
 }
 
 .signup-close {
@@ -179,5 +193,5 @@
 }
 
 .signup-close:hover {
-  color: var(--accent);
+  color: #a855f7;
 }

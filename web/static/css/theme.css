@@ -81,6 +81,16 @@ li,
 .section-copy,
 .feature-card p,
 .card p,
+.about-block p,
+.about-text p,
+.intro,
+.interests,
+.month-labels,
+.weekday-labels,
+.contribution-footer,
+.project-section p,
+.warning-box p,
+.wiki-box p,
 .contacts-page .card p,
 .pixel-card p {
   color: var(--theme-muted) !important;
@@ -99,6 +109,14 @@ a:not(.card):not(.feature-card):not(.action-button):not(.pixel-button):not(.home
 .card h3,
 .feature-card h2,
 .feature-card h3,
+.about-block h2,
+.about-text h2,
+.eyebrow,
+.skill span,
+.activity-status,
+.project-section h2,
+.warning-box h2,
+.wiki-box h2,
 .contacts-page .card h2,
 .about-page .card h2,
 .docs-page h2,
@@ -116,6 +134,20 @@ a:not(.card):not(.feature-card):not(.action-button):not(.pixel-button):not(.home
 .service-card,
 .doc-card,
 .info-card,
+.about-block,
+.about-text,
+.about-me,
+.skill,
+.activity-panel,
+.contribution-card,
+.project-section,
+.warning-box,
+.wiki-hero,
+.wiki-box,
+.topbar,
+.message-list,
+.message,
+.chat-status,
 .login-card,
 .modal,
 .chat-shell,
@@ -138,6 +170,16 @@ a:not(.card):not(.feature-card):not(.action-button):not(.pixel-button):not(.home
 .section-panel,
 .contact-card,
 .contribution-card,
+.about-block,
+.about-text,
+.about-me,
+.skill,
+.contribution-card,
+.project-section,
+.warning-box,
+.wiki-hero,
+.wiki-box,
+.message,
 .pixel-card,
 .character-slot,
 .upgrade-row,
@@ -150,6 +192,15 @@ a:not(.card):not(.feature-card):not(.action-button):not(.pixel-button):not(.home
 .link-card:hover,
 .contact-card:hover,
 .contribution-card:hover,
+.about-block:hover,
+.about-text:hover,
+.about-me:hover,
+.skill:hover,
+.contribution-card:hover,
+.project-section:hover,
+.warning-box:hover,
+.wiki-box:hover,
+.message:hover,
 .character-slot:hover,
 .upgrade-row:hover,
 .chat-message:hover {
@@ -161,8 +212,106 @@ a:not(.card):not(.feature-card):not(.action-button):not(.pixel-button):not(.home
 
 .feature-card::before,
 .card::before,
-.link-card::before {
+.link-card::before,
+.about-text::before,
+.project-section::before,
+.warning-box::before {
   background: radial-gradient(circle at top left, rgba(139, 92, 246, 0.22), transparent 58%) !important;
+}
+
+.topbar a,
+.github-link,
+#refresh-activity,
+.project-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--theme-text) !important;
+  background: rgba(17, 17, 17, 0.88) !important;
+  border: 1px solid var(--theme-border) !important;
+  border-radius: 12px !important;
+  text-decoration: none !important;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.topbar a:hover,
+.github-link:hover,
+#refresh-activity:hover,
+.project-link:hover {
+  color: #fff !important;
+  background: rgba(139, 92, 246, 0.16) !important;
+  border-color: var(--theme-border-strong) !important;
+  box-shadow: 0 12px 28px rgba(139, 92, 246, 0.2) !important;
+  transform: translateY(-1px);
+}
+
+.chat-status {
+  color: var(--theme-purple-2) !important;
+  background: rgba(17, 17, 17, 0.88) !important;
+  border-color: var(--theme-border) !important;
+}
+
+.message-list {
+  scrollbar-color: var(--theme-purple) #0a0a0a !important;
+  scrollbar-width: thin;
+}
+
+.message-list::-webkit-scrollbar-track {
+  background: #0a0a0a !important;
+  border-color: var(--theme-border) !important;
+}
+
+.message-list::-webkit-scrollbar-thumb,
+.message-list::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, var(--theme-purple), var(--theme-purple-2)) !important;
+  border-color: #0a0a0a !important;
+}
+
+.message.own {
+  background: rgba(139, 92, 246, 0.12) !important;
+  border-color: var(--theme-border-strong) !important;
+}
+
+.message-user {
+  color: var(--theme-purple-2) !important;
+}
+
+.message-time,
+.contribution-footer,
+.contribution-footer a,
+.footer {
+  color: var(--theme-muted-2) !important;
+}
+
+.contribution-footer a:hover {
+  color: var(--theme-purple-2) !important;
+}
+
+.contribution-day,
+.legend i {
+  background: #18181b !important;
+  border: 1px solid rgba(139, 92, 246, 0.08);
+}
+
+.contribution-day[data-level="1"],
+.legend i[data-level="1"] {
+  background: rgba(139, 92, 246, 0.25) !important;
+}
+
+.contribution-day[data-level="2"],
+.legend i[data-level="2"] {
+  background: rgba(139, 92, 246, 0.45) !important;
+}
+
+.contribution-day[data-level="3"],
+.legend i[data-level="3"] {
+  background: rgba(168, 85, 247, 0.7) !important;
+}
+
+.contribution-day[data-level="4"],
+.legend i[data-level="4"] {
+  background: #c084fc !important;
+  box-shadow: 0 0 10px rgba(192, 132, 252, 0.32);
 }
 
 .action-button,
