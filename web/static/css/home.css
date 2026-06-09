@@ -100,6 +100,19 @@ body {
     line-height: 1;
 }
 
+.chat-badge::after {
+    content: "";
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 10px;
+    height: 10px;
+    border: 2px solid #020617;
+    border-radius: 999px;
+    background: #c4b5fd;
+    box-shadow: 0 0 14px rgba(139, 92, 246, 0.85);
+}
+
 /* Footer */
 .footer {
     margin-top: auto;
