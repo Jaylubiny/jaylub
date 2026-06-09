@@ -118,17 +118,35 @@ main {
   gap: 8px;
 }
 
-.hp-bar {
+.xp-panel {
+  display: grid;
+  min-width: 260px;
+  grid-template-columns: auto minmax(90px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.hp-bar,
+.xp-bar {
   height: 16px;
   padding: 3px;
   background: #0a0d0e;
   border: 2px solid #4b4538;
 }
 
-.hp-bar div {
+.hp-bar div,
+.xp-bar div {
   width: 100%;
   height: 100%;
+}
+
+.hp-bar div {
   background: linear-gradient(90deg, #7d2e2a, #c4563f);
+}
+
+.xp-bar div {
+  width: 0;
+  background: linear-gradient(90deg, #8b5cf6, #d5a43a);
 }
 
 .boss-hud {
@@ -404,10 +422,23 @@ main {
   flex-wrap: wrap;
 }
 
+.shop-tabs {
+  display: flex;
+  gap: 10px;
+  margin: 12px 0;
+  flex-wrap: wrap;
+}
+
 .leaderboard-tabs .pixel-button {
   min-height: 40px;
 }
 
+.shop-tabs .pixel-button,
+.leaderboard-tabs .pixel-button {
+  min-height: 40px;
+}
+
+.shop-tabs .pixel-button.is-active,
 .leaderboard-tabs .pixel-button.is-active {
   color: #151718;
   background: var(--pixel-gold);
@@ -457,6 +488,10 @@ main {
   }
 
   .hp-panel {
+    min-width: 100%;
+  }
+
+  .xp-panel {
     min-width: 100%;
   }
 

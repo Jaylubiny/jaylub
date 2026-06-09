@@ -1,6 +1,6 @@
 {{define "head"}}
-<link rel="stylesheet" href="/web/static/css/jaylive.css?v=bosses-1">
-<script src="/web/static/js/jaylive.js?v=anti-cheat-1" defer></script>
+<link rel="stylesheet" href="/web/static/css/jaylive.css?v=slash-reach-1">
+<script src="/web/static/js/jaylive.js?v=slash-reach-1" defer></script>
 {{end}}
 
 {{define "content"}}
@@ -17,6 +17,11 @@
       </div>
       <div class="hud-panel">Gold <strong id="runGold">0</strong></div>
       <div class="hud-panel">Kills <strong id="runKills">0</strong></div>
+      <div class="hud-panel xp-panel">
+        <span>Level <strong id="runLevel">0</strong></span>
+        <div class="xp-bar"><div id="xpFill"></div></div>
+        <strong id="xpText">0 / 100 XP</strong>
+      </div>
       <div class="hud-panel">Time <strong id="runTime">0:00</strong></div>
       <div class="hud-panel boss-hud" id="bossPanel" hidden>
         <span id="bossText">Boss 500 / 500</span>
@@ -65,6 +70,10 @@
           </section>
           <section class="upgrade-panel">
             <div class="shop-gold">Gold <strong data-gold>0</strong></div>
+            <div class="shop-tabs" aria-label="Shop categories">
+              <button class="pixel-button small is-active" type="button" data-shop-category="stats">Stats</button>
+              <button class="pixel-button small muted" type="button" data-shop-category="abilities">Abilities</button>
+            </div>
             <div id="upgradeList" class="upgrade-list"></div>
           </section>
         </div>
@@ -84,6 +93,7 @@
           <button class="pixel-button small is-active" type="button" data-leaderboard-sort="totalKills">Total Kills</button>
           <button class="pixel-button small muted" type="button" data-leaderboard-sort="bestRunKills">Kills In One Run</button>
           <button class="pixel-button small muted" type="button" data-leaderboard-sort="bestRunSeconds">Most Time In One Run</button>
+          <button class="pixel-button small muted" type="button" data-leaderboard-sort="level">Level</button>
         </div>
         <table class="leaderboard-table">
           <thead>

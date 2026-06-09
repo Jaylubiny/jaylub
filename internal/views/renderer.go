@@ -11,16 +11,18 @@ import (
 )
 
 type PageData struct {
-	Title    string
-	Username string
-	Initials string
-	Stats    ProfileStats
+	Title           string
+	Username        string
+	Initials        string
+	Stats           ProfileStats
+	ChatUnreadCount int
 }
 
 type ProfileStats struct {
 	MessagesSent   int
 	Gold           int
 	LifetimeKills  int
+	GameLevel      int
 	BestRunKills   int
 	BestRunTime    string
 	HasGameProfile bool
@@ -69,6 +71,7 @@ func (r *Renderer) Render(w http.ResponseWriter, req *http.Request, name string)
 		data.Username = user.Username
 		data.Initials = initials(user.Username)
 		data.Stats = r.profileStats(user)
+		data.ChatUnreadCount = r.chatUnreadCount(user)
 	}
 
 	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
@@ -85,10 +88,10 @@ func (r *Renderer) profileStats(user auth.User) ProfileStats {
 	_ = r.db.QueryRow(`SELECT COUNT(*) FROM chat_messages WHERE username = ?`, user.Username).Scan(&stats.MessagesSent)
 
 	err := r.db.QueryRow(`
-		SELECT gold, lifetime_kills
+		SELECT gold, lifetime_kills, game_level
 		FROM game_profiles
 		WHERE user_id = ?
-	`, user.ID).Scan(&stats.Gold, &stats.LifetimeKills)
+	`, user.ID).Scan(&stats.Gold, &stats.LifetimeKills, &stats.GameLevel)
 	if err == nil {
 		stats.HasGameProfile = true
 	}
@@ -104,6 +107,21 @@ func (r *Renderer) profileStats(user auth.User) ProfileStats {
 	}
 
 	return stats
+}
+
+func (r *Renderer) chatUnreadCount(user auth.User) int {
+	if r.db == nil {
+		return 0
+	}
+
+	var count int
+	_ = r.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM chat_messages
+		WHERE username != ?
+			AND timestamp > COALESCE((SELECT last_read_at FROM chat_reads WHERE user_id = ?), '1970-01-01T00:00:00Z')
+	`, user.Username, user.ID).Scan(&count)
+	return count
 }
 
 func recordVisit() error {

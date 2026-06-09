@@ -30,6 +30,9 @@
         </a>
 
         <a href="/chat" class="card link-card">
+            {{if gt .ChatUnreadCount 0}}
+            <span class="chat-badge" aria-label="{{.ChatUnreadCount}} unread chat messages">{{if gt .ChatUnreadCount 9}}9+{{else}}{{.ChatUnreadCount}}{{end}}</span>
+            {{end}}
             <h2>Chat</h2>
             <p>Talk with logged-in Jaylub users in the global room.</p>
         </a>

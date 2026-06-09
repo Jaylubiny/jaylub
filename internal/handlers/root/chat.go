@@ -45,6 +45,7 @@ func NewChatService(db *sql.DB) *ChatService {
 func (s *ChatService) Page(w http.ResponseWriter, r *http.Request) {
 	s.markActive(r)
 	s.cleanupExpired()
+	s.markRead(r)
 	renderer.Render(w, r, "chat")
 }
 
@@ -198,6 +199,19 @@ func (s *ChatService) markActive(r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.lastActive[user.Username] = time.Now()
+}
+
+func (s *ChatService) markRead(r *http.Request) {
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		return
+	}
+
+	_, _ = s.db.Exec(`
+		INSERT INTO chat_reads (user_id, last_read_at)
+		VALUES (?, ?)
+		ON CONFLICT(user_id) DO UPDATE SET last_read_at = excluded.last_read_at
+	`, user.ID, time.Now().UTC().Format(time.RFC3339))
 }
 
 func (s *ChatService) onlineCount() int {

@@ -97,6 +97,12 @@ func (s *Service) initSchema() error {
 		CREATE INDEX IF NOT EXISTS idx_chat_messages_timestamp ON chat_messages(timestamp);
 		CREATE INDEX IF NOT EXISTS idx_chat_messages_id ON chat_messages(id);
 
+		CREATE TABLE IF NOT EXISTS chat_reads (
+			user_id INTEGER PRIMARY KEY,
+			last_read_at DATETIME NOT NULL,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		);
+
 		CREATE TABLE IF NOT EXISTS game_profiles (
 			user_id INTEGER PRIMARY KEY,
 			username TEXT NOT NULL,
@@ -109,6 +115,13 @@ func (s *Service) initSchema() error {
 			attack_speed_level INTEGER NOT NULL DEFAULT 0,
 			move_speed_level INTEGER NOT NULL DEFAULT 0,
 			piercing_level INTEGER NOT NULL DEFAULT 0,
+			ability_damage_level INTEGER NOT NULL DEFAULT 0,
+			aura_damage_level INTEGER NOT NULL DEFAULT 0,
+			football_damage_level INTEGER NOT NULL DEFAULT 0,
+			bike_damage_level INTEGER NOT NULL DEFAULT 0,
+			pigeon_damage_level INTEGER NOT NULL DEFAULT 0,
+			game_level INTEGER NOT NULL DEFAULT 0,
+			game_xp INTEGER NOT NULL DEFAULT 0,
 			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		);
@@ -119,6 +132,7 @@ func (s *Service) initSchema() error {
 			total_kills INTEGER NOT NULL DEFAULT 0,
 			best_run_kills INTEGER NOT NULL DEFAULT 0,
 			best_run_seconds INTEGER NOT NULL DEFAULT 0,
+			level INTEGER NOT NULL DEFAULT 0,
 			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		);
@@ -140,10 +154,38 @@ func (s *Service) initSchema() error {
 	if err := s.addColumnIfMissing("game_profiles", "piercing_level", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
+	if err := s.addColumnIfMissing("game_profiles", "ability_damage_level", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("game_profiles", "aura_damage_level", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("game_profiles", "football_damage_level", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("game_profiles", "bike_damage_level", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("game_profiles", "pigeon_damage_level", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("game_profiles", "game_level", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("game_profiles", "game_xp", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("game_leaderboard", "level", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
 	_, err = s.db.Exec(`
 		CREATE INDEX IF NOT EXISTS idx_game_leaderboard_best_run_kills ON game_leaderboard(best_run_kills DESC);
 		CREATE INDEX IF NOT EXISTS idx_game_leaderboard_best_run_seconds ON game_leaderboard(best_run_seconds DESC);
 	`)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_game_leaderboard_level ON game_leaderboard(level DESC)`)
 	return err
 }
 

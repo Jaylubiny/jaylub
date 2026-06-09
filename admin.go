@@ -190,7 +190,7 @@ func resetLeaderboards(db *sql.DB, reader *bufio.Reader) {
 		log.Fatal(err)
 	}
 
-	if _, err := tx.Exec(`UPDATE game_profiles SET lifetime_kills = 0`); err != nil {
+	if _, err := tx.Exec(`UPDATE game_profiles SET lifetime_kills = 0, game_level = 0, game_xp = 0`); err != nil {
 		log.Fatal(err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -265,6 +265,7 @@ func removeUserFromLeaderboardSection(db *sql.DB, reader *bufio.Reader) {
 		{name: "Total kills", column: "total_kills"},
 		{name: "Kills in one run", column: "best_run_kills"},
 		{name: "Most time in one run", column: "best_run_seconds"},
+		{name: "Level", column: "level"},
 	}
 
 	fmt.Println("Leaderboard sections")
@@ -321,6 +322,11 @@ func removeUserFromLeaderboardSection(db *sql.DB, reader *bufio.Reader) {
 			log.Fatal(err)
 		}
 	}
+	if section.column == "level" {
+		if _, err := tx.Exec(`UPDATE game_profiles SET game_level = 0, game_xp = 0, username = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`, username, userID); err != nil {
+			log.Fatal(err)
+		}
+	}
 
 	if err := tx.Commit(); err != nil {
 		log.Fatal(err)
@@ -356,6 +362,12 @@ func initSchema(db *sql.DB) error {
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		);
 
+		CREATE TABLE IF NOT EXISTS chat_reads (
+			user_id INTEGER PRIMARY KEY,
+			last_read_at DATETIME NOT NULL,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		);
+
 		CREATE TABLE IF NOT EXISTS game_profiles (
 			user_id INTEGER PRIMARY KEY,
 			username TEXT NOT NULL,
@@ -368,6 +380,13 @@ func initSchema(db *sql.DB) error {
 			attack_speed_level INTEGER NOT NULL DEFAULT 0,
 			move_speed_level INTEGER NOT NULL DEFAULT 0,
 			piercing_level INTEGER NOT NULL DEFAULT 0,
+			ability_damage_level INTEGER NOT NULL DEFAULT 0,
+			aura_damage_level INTEGER NOT NULL DEFAULT 0,
+			football_damage_level INTEGER NOT NULL DEFAULT 0,
+			bike_damage_level INTEGER NOT NULL DEFAULT 0,
+			pigeon_damage_level INTEGER NOT NULL DEFAULT 0,
+			game_level INTEGER NOT NULL DEFAULT 0,
+			game_xp INTEGER NOT NULL DEFAULT 0,
 			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		);
@@ -378,6 +397,7 @@ func initSchema(db *sql.DB) error {
 			total_kills INTEGER NOT NULL DEFAULT 0,
 			best_run_kills INTEGER NOT NULL DEFAULT 0,
 			best_run_seconds INTEGER NOT NULL DEFAULT 0,
+			level INTEGER NOT NULL DEFAULT 0,
 			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		);
@@ -386,5 +406,62 @@ func initSchema(db *sql.DB) error {
 		CREATE INDEX IF NOT EXISTS idx_game_leaderboard_best_run_kills ON game_leaderboard(best_run_kills DESC);
 		CREATE INDEX IF NOT EXISTS idx_game_leaderboard_best_run_seconds ON game_leaderboard(best_run_seconds DESC);
 	`)
+	if err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "game_profiles", "game_level", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "game_profiles", "game_xp", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "game_profiles", "ability_damage_level", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "game_profiles", "aura_damage_level", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "game_profiles", "football_damage_level", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "game_profiles", "bike_damage_level", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "game_profiles", "pigeon_damage_level", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "game_leaderboard", "level", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_game_leaderboard_level ON game_leaderboard(level DESC)`)
+	return err
+}
+
+func addColumnIfMissing(db *sql.DB, table, column, definition string) error {
+	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid int
+		var name string
+		var dataType string
+		var notNull int
+		var defaultValue sql.NullString
+		var primaryKey int
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return err
+		}
+		if name == column {
+			return rows.Err()
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	_, err = db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + column + ` ` + definition)
 	return err
 }

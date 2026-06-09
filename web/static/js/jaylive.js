@@ -17,6 +17,9 @@
     hpText: document.getElementById("hpText"),
     runGold: document.getElementById("runGold"),
     runKills: document.getElementById("runKills"),
+    runLevel: document.getElementById("runLevel"),
+    xpFill: document.getElementById("xpFill"),
+    xpText: document.getElementById("xpText"),
     runTime: document.getElementById("runTime"),
     bossPanel: document.getElementById("bossPanel"),
     bossFill: document.getElementById("bossFill"),
@@ -41,6 +44,12 @@
   enemy2Image.src = "/static/img/enemy2.png";
   const healImage = new Image();
   healImage.src = "/static/img/heal.png";
+  const footballImage = new Image();
+  footballImage.src = "/static/img/football.png";
+  const bikeImage = new Image();
+  bikeImage.src = "/static/img/bike.png";
+  const pigeonImage = new Image();
+  pigeonImage.src = "/static/img/pigeon.png";
   const bossImages = [new Image(), new Image(), new Image()];
   bossImages[0].src = "/static/img/boss.png";
   bossImages[1].src = "/static/img/boss2.png";
@@ -50,6 +59,22 @@
     { name: "Boss 1", hp: 500, reward: 250, imageIndex: 0, r: 66, size: 138, speed: 54, cooldown: 1.8, shotSpeed: 230, damage: 14, burstShots: 12 },
     { name: "Boss 2", hp: 1500, reward: 500, imageIndex: 1, r: 80, size: 168, speed: 62, cooldown: 1.35, shotSpeed: 260, damage: 18, burstShots: 14 },
     { name: "Boss 3", hp: 3000, reward: 1000, imageIndex: 2, r: 94, size: 198, speed: 70, cooldown: 1.05, shotSpeed: 290, damage: 24, burstShots: 16 },
+  ];
+  const itemPool = [
+    { id: "aura", name: "Aura", rarity: "Common", weight: 55, color: "#7fb069" },
+    { id: "football", name: "Football", rarity: "Rare", weight: 25, color: "#f1ead7" },
+    { id: "bike", name: "Bike", rarity: "Epic", weight: 15, color: "#5992a7" },
+    { id: "pigeon", name: "Pigeon", rarity: "Legendary", weight: 5, color: "#d5a43a" },
+  ];
+  const boostPool = [
+    { id: "damage", name: "+5% Damage", color: "#d5a43a", apply: (p) => { p.runDamageMult += 0.05; } },
+    { id: "attackSpeed", name: "+2% Attack Speed", color: "#f1ead7", apply: (p) => { p.runAttackSpeedMult += 0.02; } },
+    { id: "maxHp", name: "+5% Max Health", color: "#9bd27b", apply: (p) => {
+      const gain = Math.ceil(p.baseMaxHp * 0.05);
+      p.runMaxHpBonus += gain;
+      p.hp += gain;
+    } },
+    { id: "moveSpeed", name: "+3% Move Speed", color: "#5992a7", apply: (p) => { p.runSpeedMult += 0.03; } },
   ];
 
   const keys = new Set();
@@ -63,6 +88,7 @@
     shop: {},
     leaderboard: [],
     leaderboardSort: "totalKills",
+    shopCategory: "stats",
     running: false,
     paused: false,
     pausedAt: 0,
@@ -73,6 +99,8 @@
     nextBossAt: 180,
     bossEncounter: 0,
     runToken: "",
+    itemChestTimer: 60,
+    boostChestTimer: 30,
     hitPause: 0,
     shake: 0,
     dying: false,
@@ -91,6 +119,8 @@
   let boss;
   let bossProjectiles = [];
   let treasureChests = [];
+  let itemChests = [];
+  let boostChests = [];
   let nextEnemyId = 1;
 
   function resizeCanvas() {
@@ -200,15 +230,13 @@
   }
 
   function renderShop() {
-    const upgrades = [
-      ["damage", "Damage", "+2 damage per level"],
-      ["maxHp", "Max HP", "+12 maximum HP per level"],
-      ["attackSpeed", "Attack Speed", "Faster automatic attacks"],
-      ["moveSpeed", "Move Speed", "Faster movement"],
-    ];
-    if (state.profile?.selectedCharacter === "goblin_jaylub") {
-      upgrades.push(["piercing", "Piercing", "Goblin projectiles pass through more enemies"]);
-    }
+    const upgrades = shopUpgrades();
+    document.querySelectorAll("[data-shop-category]").forEach((button) => {
+      const active = button.dataset.shopCategory === state.shopCategory;
+      button.classList.toggle("is-active", active);
+      button.classList.toggle("muted", !active);
+    });
+
     ui.upgradeList.textContent = "";
     for (const [id, name, detail] of upgrades) {
       const meta = state.shop[id] || { level: 0, cost: 35 };
@@ -234,6 +262,28 @@
       row.append(copy, button);
       ui.upgradeList.append(row);
     }
+  }
+
+  function shopUpgrades() {
+    if (state.shopCategory === "abilities") {
+      return [
+        ["auraDamage", "Aura Damage", "Common - +12% Aura damage per level"],
+        ["footballDamage", "Football Damage", "Rare - +12% Football damage per level"],
+        ["bikeDamage", "Bike Damage", "Epic - +12% Bike damage per level"],
+        ["pigeonDamage", "Pigeon Damage", "Legendary - +12% Pigeon damage per level"],
+      ];
+    }
+
+    const upgrades = [
+      ["damage", "Damage", "+2 damage per level"],
+      ["maxHp", "Max HP", "+12 maximum HP per level"],
+      ["attackSpeed", "Attack Speed", "Faster automatic attacks"],
+      ["moveSpeed", "Move Speed", "Faster movement"],
+    ];
+    if (state.profile?.selectedCharacter === "goblin_jaylub") {
+      upgrades.push(["piercing", "Piercing", "Goblin projectiles pass through more enemies"]);
+    }
+    return upgrades;
   }
 
   function renderLeaderboard() {
@@ -318,6 +368,13 @@
         value: (entry) => formatTime(entry.bestRunSeconds || 0),
       };
     }
+    if (sort === "level") {
+      return {
+        eyebrow: "Highest Jaylive Level",
+        label: "Level",
+        value: (entry) => entry.level || 0,
+      };
+    }
     return {
       eyebrow: "Total Enemies Killed",
       label: "Total Kills",
@@ -357,14 +414,39 @@
       angle: 0,
       hp: stats.maxHp,
       maxHp: stats.maxHp,
+      baseMaxHp: stats.maxHp,
+      baseDamage: stats.damage,
+      baseSpeed: stats.speed,
+      baseAttackCooldown: stats.attackCooldown,
       damage: stats.damage,
       speed: stats.speed,
       character: state.profile?.selectedCharacter || "jaylub",
       attackCooldown: stats.attackCooldown,
       attackTimer: 0,
+      attackCount: 0,
       invuln: 0,
       kills: 0,
       runGold: 0,
+      level: state.profile?.gameLevel || 0,
+      xp: state.profile?.gameXP || 0,
+      nextLevelXP: levelRequirement((state.profile?.gameLevel || 0) + 1),
+      runDamageMult: 1,
+      runSpeedMult: 1,
+      runAttackSpeedMult: 1,
+      runMaxHpBonus: 0,
+      runItems: {
+        aura: 0,
+        football: 0,
+        bike: 0,
+        pigeon: 0,
+      },
+      itemTimers: {
+        aura: 0,
+        football: 0,
+        bike: 5,
+        pigeon: 5,
+        footballAngle: 0,
+      },
       startedAt: performance.now(),
       survivalSeconds: 0,
     };
@@ -377,6 +459,8 @@
     projectiles = [];
     bossProjectiles = [];
     treasureChests = [];
+    itemChests = [];
+    boostChests = [];
     boss = undefined;
     nextEnemyId = 1;
     state.spawnTimer = 0;
@@ -385,6 +469,8 @@
     state.nextBossAt = 180;
     state.bossEncounter = 0;
     state.runToken = runData.runToken;
+    state.itemChestTimer = 60;
+    state.boostChestTimer = 30;
     state.shake = 0;
     state.hitPause = 0;
     state.paused = false;
@@ -395,6 +481,43 @@
     state.running = true;
     showScreen("game");
     updateHud();
+  }
+
+  function refreshRunStats() {
+    if (!player) return;
+    player.maxHp = player.baseMaxHp + player.runMaxHpBonus;
+    player.damage = Math.max(1, Math.round(player.baseDamage * player.runDamageMult));
+    player.speed = player.baseSpeed * player.runSpeedMult;
+    player.attackCooldown = Math.max(0.014, player.baseAttackCooldown / player.runAttackSpeedMult);
+  }
+
+  function levelRequirement(level) {
+    const step = Math.max(1, level);
+    return 100 + (step - 1) * 70 + Math.floor(Math.pow(step - 1, 1.35) * 30);
+  }
+
+  function levelReward(level) {
+    if (level === 1) {
+      return {
+        text: "+15% Damage +100 Gold",
+        apply: (p) => {
+          p.runDamageMult += 0.15;
+          p.runGold += 100;
+        },
+      };
+    }
+    const rewards = [
+      { text: "+7% Damage", apply: (p) => { p.runDamageMult += 0.07; } },
+      { text: "+8% Max HP", apply: (p) => {
+        const gain = Math.ceil(p.baseMaxHp * 0.08);
+        p.runMaxHpBonus += gain;
+        p.hp += gain;
+      } },
+      { text: "+4% Attack Speed", apply: (p) => { p.runAttackSpeedMult += 0.04; } },
+      { text: "+5% Move Speed", apply: (p) => { p.runSpeedMult += 0.05; } },
+      { text: "+75 Gold", apply: (p) => { p.runGold += 75; } },
+    ];
+    return rewards[(level - 2) % rewards.length];
   }
 
   function difficulty() {
@@ -465,6 +588,7 @@
     state.shake = Math.max(0, state.shake - dt * 28);
 
     updateMouseWorld();
+    refreshRunStats();
     updatePlayer(dt);
     updateCamera();
     autoAttack();
@@ -472,6 +596,8 @@
     updateBoss(dt);
     updateSpawns(dt);
     updateHealSpawns(dt);
+    updateRunChestSpawns(dt);
+    updateRunItems(dt);
     updateEnemies(dt);
     updateDrops(dt);
     updateProjectiles(dt);
@@ -703,6 +829,50 @@
     state.healSpawnTimer = 9 + Math.random() * 12;
   }
 
+  function updateRunChestSpawns(dt) {
+    state.itemChestTimer -= dt;
+    if (state.itemChestTimer <= 0) {
+      spawnRunChest("item");
+      state.itemChestTimer = 60;
+    }
+
+    state.boostChestTimer -= dt;
+    if (state.boostChestTimer <= 0) {
+      spawnRunChest("boost");
+      state.boostChestTimer = 30;
+    }
+  }
+
+  function spawnRunChest(type) {
+    const spot = randomMapSpot(96);
+    const chest = {
+      x: spot.x,
+      y: spot.y,
+      type,
+      life: 0,
+      collected: false,
+    };
+    if (type === "item") {
+      itemChests.push(chest);
+    } else {
+      boostChests.push(chest);
+    }
+    numbers.push({
+      x: chest.x,
+      y: chest.y - 28,
+      text: type === "item" ? "Item chest" : "Boost chest",
+      color: type === "item" ? "#d5a43a" : "#9bd27b",
+      life: 1.2,
+    });
+  }
+
+  function randomMapSpot(margin) {
+    return {
+      x: margin + Math.random() * (world.width - margin * 2),
+      y: margin + Math.random() * (world.height - margin * 2),
+    };
+  }
+
   function updateEnemies(dt) {
     for (const enemy of enemies) {
       const dx = player.x - enemy.x;
@@ -721,7 +891,117 @@
     }
   }
 
+  function updateRunItems(dt) {
+    if (!player) return;
+
+    if (player.runItems.aura > 0) {
+      player.itemTimers.aura -= dt;
+      if (player.itemTimers.aura <= 0) {
+        damageEnemiesInRadius(player.x, player.y, 170, abilityDamage("aura", 0.1 * player.runItems.aura), "#7fb069");
+        player.itemTimers.aura = 0.35;
+      }
+    }
+
+    if (player.runItems.football > 0) {
+      player.itemTimers.footballAngle += dt * (2.8 + player.runItems.football * 0.18);
+      player.itemTimers.football -= dt;
+      if (player.itemTimers.football <= 0) {
+        for (let i = 0; i < player.runItems.football; i++) {
+          const ball = footballPosition(i);
+          damageEnemiesInRadius(ball.x, ball.y, 52, abilityDamage("football", 0.3), "#f1ead7");
+        }
+        player.itemTimers.football = 5;
+      }
+    }
+
+    if (player.runItems.bike > 0) {
+      player.itemTimers.bike -= dt;
+      if (player.itemTimers.bike <= 0) {
+        for (let i = 0; i < player.runItems.bike; i++) {
+          fireItemProjectile("bike", player.angle + (i - (player.runItems.bike - 1) / 2) * 0.14, abilityDamage("bike", 0.35), 620);
+        }
+        player.itemTimers.bike = 5;
+      }
+    }
+
+    if (player.runItems.pigeon > 0) {
+      player.itemTimers.pigeon -= dt;
+      if (player.itemTimers.pigeon <= 0) {
+        const spread = 35 * Math.PI / 180;
+        for (let stack = 0; stack < player.runItems.pigeon; stack++) {
+          const offset = (stack - (player.runItems.pigeon - 1) / 2) * 0.08;
+          for (const angle of [player.angle + offset, player.angle + spread + offset, player.angle - spread + offset]) {
+            fireItemProjectile("pigeon", angle, abilityDamage("pigeon", 0.75), 720);
+          }
+        }
+        player.itemTimers.pigeon = 5;
+      }
+    }
+  }
+
+  function footballPosition(index) {
+    const count = Math.max(1, player.runItems.football);
+    const angle = player.itemTimers.footballAngle + (Math.PI * 2 * index) / count;
+    const radius = 102 + (index % 2) * 18;
+    const bounce = Math.sin(player.itemTimers.footballAngle * 3 + index) * 12;
+    return {
+      x: player.x + Math.cos(angle) * radius,
+      y: player.y + Math.sin(angle) * (radius + bounce),
+    };
+  }
+
+  function abilityDamage(kind, ratio) {
+    const levels = {
+      aura: state.profile?.auraDamageLevel || 0,
+      football: state.profile?.footballDamageLevel || 0,
+      bike: state.profile?.bikeDamageLevel || 0,
+      pigeon: state.profile?.pigeonDamageLevel || 0,
+    };
+    const level = levels[kind] || 0;
+    return Math.max(1, Math.ceil(player.damage * ratio * (1 + level * 0.12)));
+  }
+
+  function fireItemProjectile(kind, angle, damage, speed) {
+    projectiles.push({
+      x: player.x + Math.cos(angle) * 34,
+      y: player.y + Math.sin(angle) * 34,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      r: kind === "pigeon" ? 24 : 28,
+      damage,
+      pierceLeft: kind === "pigeon" ? 1 : 0,
+      hitEnemyIds: new Set(),
+      life: kind === "pigeon" ? 1.25 : 1.1,
+      angle,
+      kind,
+    });
+  }
+
+  function damageEnemiesInRadius(x, y, radius, amount, color) {
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      const enemy = enemies[i];
+      if (Math.hypot(enemy.x - x, enemy.y - y) > enemy.r + radius) continue;
+      damageEnemyAt(i, amount, enemy.x, enemy.y, color);
+    }
+    if (boss && Math.hypot(boss.x - x, boss.y - y) <= boss.r + radius) {
+      damageBoss(amount, x, y);
+    }
+  }
+
+  function damageEnemyAt(index, amount, x, y, color) {
+    const enemy = enemies[index];
+    if (!enemy) return;
+    enemy.hp -= amount;
+    enemy.hitTimer = 0.12;
+    numbers.push({ x: x || enemy.x, y: (y || enemy.y) - 28, text: String(amount), color, life: 0.62 });
+    burst(x || enemy.x, y || enemy.y, color, 7);
+    if (enemy.hp <= 0) killEnemy(index);
+  }
+
   function updateDrops(dt) {
+    updateRunChestDrops(itemChests, openItemChest, dt);
+    updateRunChestDrops(boostChests, openBoostChest, dt);
+
     for (let i = treasureChests.length - 1; i >= 0; i--) {
       const chest = treasureChests[i];
       chest.life += dt;
@@ -762,6 +1042,61 @@
     }
   }
 
+  function updateRunChestDrops(chests, opener, dt) {
+    for (let i = chests.length - 1; i >= 0; i--) {
+      const chest = chests[i];
+      chest.life += dt;
+      if (!chest.collected && Math.hypot(player.x - chest.x, player.y - chest.y) < player.r + 34) {
+        chest.collected = true;
+        opener(chest);
+        chests.splice(i, 1);
+      }
+    }
+  }
+
+  function openItemChest(chest) {
+    const missing = itemPool.filter((entry) => (player.runItems[entry.id] || 0) === 0);
+    const item = weightedPick(missing.length ? missing : itemPool);
+    if (!missing.length) {
+      const gold = duplicateItemGold(item.rarity);
+      player.runGold += gold;
+      numbers.push({ x: chest.x, y: chest.y - 34, text: `${item.rarity}: +${gold} gold`, color: item.color, life: 1.35 });
+      burst(chest.x, chest.y, item.color, item.rarity === "Legendary" ? 50 : 30);
+      return;
+    }
+    player.runItems[item.id]++;
+    if (item.id === "football") player.itemTimers.football = 0;
+    if (item.id === "bike") player.itemTimers.bike = Math.min(player.itemTimers.bike, 0.35);
+    if (item.id === "pigeon") player.itemTimers.pigeon = Math.min(player.itemTimers.pigeon, 0.35);
+    numbers.push({ x: chest.x, y: chest.y - 34, text: `${item.rarity}: ${item.name}`, color: item.color, life: 1.35 });
+    burst(chest.x, chest.y, item.color, item.rarity === "Legendary" ? 50 : 30);
+  }
+
+  function duplicateItemGold(rarity) {
+    if (rarity === "Rare") return 50;
+    if (rarity === "Epic") return 75;
+    if (rarity === "Legendary") return 100;
+    return 25;
+  }
+
+  function openBoostChest(chest) {
+    const boost = boostPool[Math.floor(Math.random() * boostPool.length)];
+    boost.apply(player);
+    refreshRunStats();
+    numbers.push({ x: chest.x, y: chest.y - 34, text: boost.name, color: boost.color, life: 1.2 });
+    burst(chest.x, chest.y, boost.color, 26);
+  }
+
+  function weightedPick(pool) {
+    const total = pool.reduce((sum, entry) => sum + entry.weight, 0);
+    let roll = Math.random() * total;
+    for (const entry of pool) {
+      roll -= entry.weight;
+      if (roll <= 0) return entry;
+    }
+    return pool[pool.length - 1];
+  }
+
   function updateEffects(dt) {
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
@@ -796,11 +1131,7 @@
         if (Math.hypot(projectile.x - enemy.x, projectile.y - enemy.y) > projectile.r + enemy.r) continue;
 
         projectile.hitEnemyIds.add(enemy.id);
-        enemy.hp -= projectile.damage;
-        enemy.hitTimer = 0.12;
-        numbers.push({ x: enemy.x, y: enemy.y - 28, text: String(projectile.damage), color: "#9bd27b", life: 0.62 });
-        burst(projectile.x, projectile.y, "#7fb069", 8);
-        if (enemy.hp <= 0) killEnemy(enemyIndex);
+        damageEnemyAt(enemyIndex, projectile.damage, projectile.x, projectile.y, projectileColor(projectile));
         projectile.pierceLeft--;
         if (projectile.pierceLeft < 0) {
           hit = true;
@@ -827,9 +1158,14 @@
       return true;
     }
 
-    const slash = { x: player.x, y: player.y, angle: player.angle, life: 0.16, maxLife: 0.16 };
+    player.attackCount++;
+    const strong = player.attackCount % 3 === 0;
+    const reach = strong ? 190 : 105;
+    const width = strong ? 1.02 : 0.82;
+    const damage = strong ? Math.ceil(player.damage * 1.45) : player.damage;
+    const slash = { x: player.x, y: player.y, angle: player.angle, life: 0.16, maxLife: 0.16, reach, width, strong };
     slashes.push(slash);
-    state.shake = Math.max(state.shake, 3);
+    state.shake = Math.max(state.shake, strong ? 5 : 3);
 
     for (const enemy of enemies) {
       const dx = enemy.x - player.x;
@@ -837,11 +1173,11 @@
       const dist = Math.hypot(dx, dy);
       const angle = Math.atan2(dy, dx);
       const diff = Math.abs(wrapAngle(angle - player.angle));
-      if (dist < 92 && diff < 0.95) {
-        enemy.hp -= player.damage;
+      if (dist < reach + enemy.r && diff < width) {
+        enemy.hp -= damage;
         enemy.hitTimer = 0.12;
-        numbers.push({ x: enemy.x, y: enemy.y - 28, text: String(player.damage), color: "#f1ead7", life: 0.62 });
-        burst(enemy.x, enemy.y, "#9f3f36", 8);
+        numbers.push({ x: enemy.x, y: enemy.y - 28, text: String(damage), color: strong ? "#d5a43a" : "#f1ead7", life: 0.62 });
+        burst(enemy.x, enemy.y, strong ? "#d5a43a" : "#9f3f36", strong ? 14 : 8);
       }
     }
 
@@ -855,8 +1191,8 @@
       const dist = Math.hypot(dx, dy);
       const angle = Math.atan2(dy, dx);
       const diff = Math.abs(wrapAngle(angle - player.angle));
-      if (dist < boss.r + 92 && diff < 1.05) {
-        damageBoss(player.damage, boss.x, boss.y);
+      if (dist < boss.r + reach && diff < width + 0.1) {
+        damageBoss(damage, boss.x, boss.y);
       }
     }
     return true;
@@ -888,13 +1224,21 @@
       hitEnemyIds: new Set(),
       life: 1.15,
       angle: player.angle,
+      kind: "goblin",
     });
     state.shake = Math.max(state.shake, 2);
+  }
+
+  function projectileColor(projectile) {
+    if (projectile.kind === "bike") return "#5992a7";
+    if (projectile.kind === "pigeon") return "#d5a43a";
+    return "#7fb069";
   }
 
   function killEnemy(index) {
     const enemy = enemies[index];
     player.kills++;
+    gainXP(1);
     const goldChance = enemy.type === "elite" ? 0.82 : 0.58;
     if (Math.random() < goldChance) {
       const value = enemy.type === "elite" ? 4 + Math.floor(Math.random() * 5) : 1 + Math.floor(Math.random() * 4);
@@ -902,6 +1246,20 @@
     }
     burst(enemy.x, enemy.y, enemy.type === "elite" ? "#9f5f3a" : "#6f7356", enemy.type === "elite" ? 28 : 18);
     enemies.splice(index, 1);
+  }
+
+  function gainXP(amount) {
+    player.xp += amount;
+    while (player.xp >= player.nextLevelXP) {
+      player.xp -= player.nextLevelXP;
+      player.level++;
+      const reward = levelReward(player.level);
+      reward.apply(player);
+      refreshRunStats();
+      player.nextLevelXP = levelRequirement(player.level + 1);
+      numbers.push({ x: player.x, y: player.y - 58, text: `Level ${player.level}: ${reward.text}`, color: "#d5a43a", life: 1.4 });
+      burst(player.x, player.y, "#d5a43a", 32);
+    }
   }
 
   function damagePlayer(amount) {
@@ -959,9 +1317,13 @@
     projectiles = [];
     bossProjectiles = [];
     treasureChests = [];
+    itemChests = [];
+    boostChests = [];
     boss = undefined;
     state.spawnPauseTimer = 0;
     state.runToken = "";
+    state.itemChestTimer = 60;
+    state.boostChestTimer = 30;
     showScreen("menu");
   }
 
@@ -1003,14 +1365,18 @@
     ctx.translate(Math.round(-camera.x + shakeX), Math.round(-camera.y + shakeY));
 
     drawWorld();
+    if (player) drawAura();
     for (const drop of goldDrops) drawGold(drop);
     for (const drop of healDrops) drawHeal(drop);
     for (const chest of treasureChests) drawTreasure(chest);
+    for (const chest of itemChests) drawRunChest(chest);
+    for (const chest of boostChests) drawRunChest(chest);
     for (const enemy of enemies) drawEnemy(enemy);
     if (boss) drawBoss();
     for (const projectile of bossProjectiles) drawBossProjectile(projectile);
     if (player) {
       drawPlayer();
+      drawFootball();
       for (const slash of slashes) drawSlash(slash);
       for (const projectile of projectiles) drawProjectile(projectile);
     }
@@ -1111,16 +1477,19 @@
 
   function drawSlash(slash) {
     const t = slash.life / slash.maxLife;
+    const reach = slash.reach || 76;
+    const bladeW = slash.strong ? 18 : 12;
+    const bladeH = slash.strong ? 88 : 68;
     ctx.save();
     ctx.translate(slash.x, slash.y);
     ctx.rotate(slash.angle);
     ctx.globalAlpha = Math.max(0, t);
-    ctx.fillStyle = "#e7dfc9";
-    ctx.fillRect(24, -34, 12, 68);
-    ctx.fillStyle = "#d5a43a";
-    ctx.fillRect(36, -26, 12, 52);
+    ctx.fillStyle = slash.strong ? "#d5a43a" : "#e7dfc9";
+    ctx.fillRect(24, -bladeH / 2, bladeW, bladeH);
+    ctx.fillStyle = slash.strong ? "#f1d879" : "#d5a43a";
+    ctx.fillRect(36, -bladeH / 2 + 8, bladeW, bladeH - 16);
     ctx.fillStyle = "#f1ead7";
-    ctx.fillRect(48, -14, 28, 28);
+    ctx.fillRect(reach - 28, -14, 28, 28);
     ctx.restore();
   }
 
@@ -1128,12 +1497,18 @@
     ctx.save();
     ctx.translate(projectile.x, projectile.y);
     ctx.rotate(projectile.angle);
-    ctx.fillStyle = "#0a0d0e";
-    ctx.fillRect(-8, -8, 20, 16);
-    ctx.fillStyle = "#7fb069";
-    ctx.fillRect(-5, -5, 16, 10);
-    ctx.fillStyle = "#c8e6a0";
-    ctx.fillRect(4, -3, 5, 4);
+    if (projectile.kind === "bike") {
+      drawItemImage(bikeImage, 62, 46, "#5992a7");
+    } else if (projectile.kind === "pigeon") {
+      drawItemImage(pigeonImage, 52, 44, "#d5a43a");
+    } else {
+      ctx.fillStyle = "#0a0d0e";
+      ctx.fillRect(-8, -8, 20, 16);
+      ctx.fillStyle = "#7fb069";
+      ctx.fillRect(-5, -5, 16, 10);
+      ctx.fillStyle = "#c8e6a0";
+      ctx.fillRect(4, -3, 5, 4);
+    }
     ctx.restore();
   }
 
@@ -1194,6 +1569,70 @@
     ctx.strokeRect(chest.x - 24, chest.y - 12 + bob, 48, 32);
   }
 
+  function drawRunChest(chest) {
+    const bob = Math.sin(chest.life * 5) * 3;
+    const primary = chest.type === "item" ? "#8b5cf6" : "#7fb069";
+    const lid = chest.type === "item" ? "#d5a43a" : "#9bd27b";
+    ctx.fillStyle = "rgba(0, 0, 0, 0.32)";
+    ctx.fillRect(chest.x - 22, chest.y + 18, 44, 9);
+    ctx.fillStyle = "#171b1c";
+    ctx.fillRect(chest.x - 22, chest.y - 12 + bob, 44, 32);
+    ctx.fillStyle = primary;
+    ctx.fillRect(chest.x - 22, chest.y - 12 + bob, 44, 9);
+    ctx.fillRect(chest.x - 5, chest.y - 12 + bob, 10, 32);
+    ctx.fillStyle = lid;
+    ctx.fillRect(chest.x - 3, chest.y + 2 + bob, 6, 6);
+    ctx.strokeStyle = "#0a0d0e";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(chest.x - 22, chest.y - 12 + bob, 44, 32);
+  }
+
+  function drawAura() {
+    if (!player || player.runItems.aura <= 0) return;
+    const pulse = 0.82 + Math.sin(performance.now() / 180) * 0.12;
+    ctx.save();
+    ctx.globalAlpha = 0.22;
+    ctx.fillStyle = "#7fb069";
+    ctx.beginPath();
+    ctx.ellipse(player.x - 4, player.y + 4, 150 * pulse, 108 * pulse, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.36;
+    for (let i = 0; i < 10; i++) {
+      const angle = i * 0.9 + performance.now() / 620;
+      const radius = 54 + (i % 4) * 24;
+      ctx.fillRect(
+        Math.round(player.x + Math.cos(angle) * radius),
+        Math.round(player.y + Math.sin(angle * 1.2) * radius * 0.65),
+        5,
+        5,
+      );
+    }
+    ctx.restore();
+  }
+
+  function drawFootball() {
+    if (!player || player.runItems.football <= 0) return;
+    for (let i = 0; i < player.runItems.football; i++) {
+      const ball = footballPosition(i);
+      ctx.save();
+      ctx.translate(ball.x, ball.y);
+      ctx.rotate(player.itemTimers.footballAngle * 1.8 + i);
+      drawItemImage(footballImage, 44, 44, "#f1ead7");
+      ctx.restore();
+    }
+  }
+
+  function drawItemImage(image, width, height, fallback) {
+    if (image.complete && image.naturalWidth) {
+      ctx.drawImage(image, -width / 2, -height / 2, width, height);
+      return;
+    }
+    ctx.fillStyle = "#0a0d0e";
+    ctx.fillRect(-width / 2, -height / 2, width, height);
+    ctx.fillStyle = fallback;
+    ctx.fillRect(-width / 2 + 4, -height / 2 + 4, width - 8, height - 8);
+  }
+
   function drawParticle(p) {
     ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
     ctx.fillStyle = p.color;
@@ -1216,6 +1655,9 @@
     ui.hpText.textContent = `${Math.max(0, Math.ceil(player.hp))} / ${player.maxHp}`;
     ui.runGold.textContent = player.runGold;
     ui.runKills.textContent = player.kills;
+    if (ui.runLevel) ui.runLevel.textContent = player.level;
+    if (ui.xpFill) ui.xpFill.style.width = `${clamp(player.xp / player.nextLevelXP, 0, 1) * 100}%`;
+    if (ui.xpText) ui.xpText.textContent = `${player.xp} / ${player.nextLevelXP} XP`;
     ui.runTime.textContent = formatTime(player.survivalSeconds);
     if (ui.bossPanel) {
       ui.bossPanel.hidden = !boss;
@@ -1316,6 +1758,12 @@
   document.getElementById("shopButton").addEventListener("click", () => {
     renderShop();
     showScreen("shop");
+  });
+  document.querySelectorAll("[data-shop-category]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.shopCategory = button.dataset.shopCategory || "stats";
+      renderShop();
+    });
   });
   document.getElementById("leaderboardButton").addEventListener("click", () => {
     renderLeaderboard();

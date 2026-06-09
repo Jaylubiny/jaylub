@@ -7,13 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"jaylub/internal/auth"
+	"math"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 )
 
-const maxGameRunGold = 100000
+const maxGameRunGold = 1000000
 
 var errUnknownLeaderboardSort = errors.New("unknown leaderboard sort")
 
@@ -29,16 +30,23 @@ type activeJayliveRun struct {
 }
 
 type JayliveProfile struct {
-	Username          string `json:"username"`
-	Gold              int    `json:"gold"`
-	LifetimeKills     int    `json:"lifetimeKills"`
-	SelectedCharacter string `json:"selectedCharacter"`
-	GoblinUnlocked    bool   `json:"goblinJaylubUnlocked"`
-	DamageLevel       int    `json:"damageLevel"`
-	PiercingLevel     int    `json:"piercingLevel"`
-	MaxHPLevel        int    `json:"maxHpLevel"`
-	AttackSpeedLevel  int    `json:"attackSpeedLevel"`
-	MoveSpeedLevel    int    `json:"moveSpeedLevel"`
+	Username            string `json:"username"`
+	Gold                int    `json:"gold"`
+	LifetimeKills       int    `json:"lifetimeKills"`
+	SelectedCharacter   string `json:"selectedCharacter"`
+	GoblinUnlocked      bool   `json:"goblinJaylubUnlocked"`
+	DamageLevel         int    `json:"damageLevel"`
+	PiercingLevel       int    `json:"piercingLevel"`
+	MaxHPLevel          int    `json:"maxHpLevel"`
+	AttackSpeedLevel    int    `json:"attackSpeedLevel"`
+	MoveSpeedLevel      int    `json:"moveSpeedLevel"`
+	AbilityDamageLevel  int    `json:"abilityDamageLevel"`
+	AuraDamageLevel     int    `json:"auraDamageLevel"`
+	FootballDamageLevel int    `json:"footballDamageLevel"`
+	BikeDamageLevel     int    `json:"bikeDamageLevel"`
+	PigeonDamageLevel   int    `json:"pigeonDamageLevel"`
+	GameLevel           int    `json:"gameLevel"`
+	GameXP              int    `json:"gameXP"`
 }
 
 type LeaderboardEntry struct {
@@ -47,6 +55,7 @@ type LeaderboardEntry struct {
 	TotalKills     int    `json:"totalKills"`
 	BestRunKills   int    `json:"bestRunKills"`
 	BestRunSeconds int    `json:"bestRunSeconds"`
+	Level          int    `json:"level"`
 }
 
 func NewJayliveService(db *sql.DB) *JayliveService {
@@ -127,7 +136,7 @@ func (s *JayliveService) BuyUpgrade(w http.ResponseWriter, r *http.Request) {
 	}
 
 	profile, err := scanJayliveProfile(tx.QueryRow(`
-		SELECT username, gold, lifetime_kills, selected_character, goblin_jaylub_unlocked, damage_level, piercing_level, max_hp_level, attack_speed_level, move_speed_level
+		SELECT username, gold, lifetime_kills, selected_character, goblin_jaylub_unlocked, damage_level, piercing_level, max_hp_level, attack_speed_level, move_speed_level, ability_damage_level, aura_damage_level, football_damage_level, bike_damage_level, pigeon_damage_level, game_level, game_xp
 		FROM game_profiles
 		WHERE user_id = ?
 	`, user.ID))
@@ -146,6 +155,9 @@ func (s *JayliveService) BuyUpgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cost := upgradeCost(level)
+	if isAbilityDamageUpgrade(upgrade) {
+		cost = abilityDamageUpgradeCost(upgrade, level)
+	}
 	if profile.Gold < cost {
 		http.Error(w, "Not enough gold.", http.StatusBadRequest)
 		return
@@ -211,7 +223,7 @@ func (s *JayliveService) Character(w http.ResponseWriter, r *http.Request) {
 	}
 
 	profile, err := scanJayliveProfile(tx.QueryRow(`
-		SELECT username, gold, lifetime_kills, selected_character, goblin_jaylub_unlocked, damage_level, piercing_level, max_hp_level, attack_speed_level, move_speed_level
+		SELECT username, gold, lifetime_kills, selected_character, goblin_jaylub_unlocked, damage_level, piercing_level, max_hp_level, attack_speed_level, move_speed_level, ability_damage_level, aura_damage_level, football_damage_level, bike_damage_level, pigeon_damage_level, game_level, game_xp
 		FROM game_profiles
 		WHERE user_id = ?
 	`, user.ID))
@@ -365,18 +377,26 @@ func (s *JayliveService) SubmitRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var currentLevel int
+	var currentXP int
+	if err := tx.QueryRow(`SELECT game_level, game_xp FROM game_profiles WHERE user_id = ?`, user.ID).Scan(&currentLevel, &currentXP); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	newLevel, newXP := advanceJayliveLevel(currentLevel, currentXP, payload.Kills)
+
 	now := time.Now().UTC().Format(time.RFC3339)
 	if _, err := tx.Exec(`
 		UPDATE game_profiles
-		SET gold = gold + ?, lifetime_kills = lifetime_kills + ?, username = ?, updated_at = ?
+		SET gold = gold + ?, lifetime_kills = lifetime_kills + ?, game_level = ?, game_xp = ?, username = ?, updated_at = ?
 		WHERE user_id = ?
-	`, payload.Gold, payload.Kills, user.Username, now, user.ID); err != nil {
+	`, payload.Gold, payload.Kills, newLevel, newXP, user.Username, now, user.ID); err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 	if _, err := tx.Exec(`
-		INSERT INTO game_leaderboard (user_id, username, total_kills, best_run_kills, best_run_seconds, updated_at)
-		SELECT user_id, username, lifetime_kills, ?, ?, ?
+		INSERT INTO game_leaderboard (user_id, username, total_kills, best_run_kills, best_run_seconds, level, updated_at)
+		SELECT user_id, username, lifetime_kills, ?, ?, game_level, ?
 		FROM game_profiles
 		WHERE user_id = ?
 		ON CONFLICT(user_id) DO UPDATE SET
@@ -384,6 +404,7 @@ func (s *JayliveService) SubmitRun(w http.ResponseWriter, r *http.Request) {
 			total_kills = excluded.total_kills,
 			best_run_kills = max(game_leaderboard.best_run_kills, excluded.best_run_kills),
 			best_run_seconds = max(game_leaderboard.best_run_seconds, excluded.best_run_seconds),
+			level = excluded.level,
 			updated_at = excluded.updated_at
 	`, payload.Kills, payload.SurvivalSeconds, now, user.ID); err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -479,7 +500,7 @@ func (s *JayliveService) profile(r *http.Request) (JayliveProfile, error) {
 		return JayliveProfile{}, err
 	}
 	return scanJayliveProfile(s.db.QueryRow(`
-		SELECT username, gold, lifetime_kills, selected_character, goblin_jaylub_unlocked, damage_level, piercing_level, max_hp_level, attack_speed_level, move_speed_level
+		SELECT username, gold, lifetime_kills, selected_character, goblin_jaylub_unlocked, damage_level, piercing_level, max_hp_level, attack_speed_level, move_speed_level, ability_damage_level, aura_damage_level, football_damage_level, bike_damage_level, pigeon_damage_level, game_level, game_xp
 		FROM game_profiles
 		WHERE user_id = ?
 	`, user.ID))
@@ -491,7 +512,7 @@ func (s *JayliveService) leaderboard(sort string, limit int) ([]LeaderboardEntry
 		return nil, err
 	}
 	rows, err := s.db.Query(`
-		SELECT username, total_kills, best_run_kills, best_run_seconds
+		SELECT username, total_kills, best_run_kills, best_run_seconds, level
 		FROM game_leaderboard
 		WHERE `+orderColumn+` > 0
 		ORDER BY `+orderColumn+` DESC, username ASC
@@ -507,7 +528,7 @@ func (s *JayliveService) leaderboard(sort string, limit int) ([]LeaderboardEntry
 	for rows.Next() {
 		var entry LeaderboardEntry
 		entry.Rank = rank
-		if err := rows.Scan(&entry.Username, &entry.TotalKills, &entry.BestRunKills, &entry.BestRunSeconds); err != nil {
+		if err := rows.Scan(&entry.Username, &entry.TotalKills, &entry.BestRunKills, &entry.BestRunSeconds, &entry.Level); err != nil {
 			return nil, err
 		}
 		entries = append(entries, entry)
@@ -524,6 +545,8 @@ func leaderboardOrderColumn(sort string) (string, error) {
 		return "best_run_kills", nil
 	case "bestRunSeconds":
 		return "best_run_seconds", nil
+	case "level":
+		return "level", nil
 	default:
 		return "", errUnknownLeaderboardSort
 	}
@@ -534,7 +557,9 @@ func maxPlausibleRunKills(survivalSeconds int) int {
 }
 
 func maxPlausibleRunGold(survivalSeconds, kills int) int {
-	return kills*10 + maxPlausibleBossGold(survivalSeconds) + 100
+	itemChestGold := (survivalSeconds/60 + 1) * 100
+	levelRewardGold := (kills/100 + 1) * 150
+	return kills*12 + maxPlausibleBossGold(survivalSeconds) + itemChestGold + levelRewardGold + 150
 }
 
 func maxPlausibleBossGold(survivalSeconds int) int {
@@ -553,6 +578,29 @@ func maxPlausibleBossGold(survivalSeconds int) int {
 		}
 	}
 	return total
+}
+
+func advanceJayliveLevel(level, xp, gainedXP int) (int, int) {
+	if level < 0 {
+		level = 0
+	}
+	if xp < 0 {
+		xp = 0
+	}
+	xp += gainedXP
+	for xp >= jayliveLevelRequirement(level+1) {
+		xp -= jayliveLevelRequirement(level + 1)
+		level++
+	}
+	return level, xp
+}
+
+func jayliveLevelRequirement(level int) int {
+	if level < 1 {
+		level = 1
+	}
+	step := float64(level - 1)
+	return 100 + (level-1)*70 + int(math.Pow(step, 1.35)*30)
 }
 
 func randomRunToken() (string, error) {
@@ -586,6 +634,13 @@ func scanJayliveProfile(row interface{ Scan(dest ...any) error }) (JayliveProfil
 		&profile.MaxHPLevel,
 		&profile.AttackSpeedLevel,
 		&profile.MoveSpeedLevel,
+		&profile.AbilityDamageLevel,
+		&profile.AuraDamageLevel,
+		&profile.FootballDamageLevel,
+		&profile.BikeDamageLevel,
+		&profile.PigeonDamageLevel,
+		&profile.GameLevel,
+		&profile.GameXP,
 	)
 	profile.GoblinUnlocked = goblinUnlocked == 1
 	return profile, err
@@ -603,6 +658,16 @@ func upgradeColumn(upgrade string) (string, error) {
 		return "move_speed_level", nil
 	case "piercing":
 		return "piercing_level", nil
+	case "abilityDamage":
+		return "ability_damage_level", nil
+	case "auraDamage":
+		return "aura_damage_level", nil
+	case "footballDamage":
+		return "football_damage_level", nil
+	case "bikeDamage":
+		return "bike_damage_level", nil
+	case "pigeonDamage":
+		return "pigeon_damage_level", nil
 	default:
 		return "", errors.New("Unknown upgrade.")
 	}
@@ -620,6 +685,16 @@ func upgradeLevel(profile JayliveProfile, upgrade string) int {
 		return profile.MoveSpeedLevel
 	case "piercing":
 		return profile.PiercingLevel
+	case "abilityDamage":
+		return profile.AbilityDamageLevel
+	case "auraDamage":
+		return profile.AuraDamageLevel
+	case "footballDamage":
+		return profile.FootballDamageLevel
+	case "bikeDamage":
+		return profile.BikeDamageLevel
+	case "pigeonDamage":
+		return profile.PigeonDamageLevel
 	default:
 		return 0
 	}
@@ -627,6 +702,29 @@ func upgradeLevel(profile JayliveProfile, upgrade string) int {
 
 func upgradeCost(level int) int {
 	return 35 + level*28 + level*level*7
+}
+
+func abilityDamageUpgradeCost(upgrade string, level int) int {
+	base := 220
+	step := 130
+	curve := 55
+	switch upgrade {
+	case "footballDamage":
+		base, step, curve = 320, 175, 78
+	case "bikeDamage":
+		base, step, curve = 470, 235, 110
+	case "pigeonDamage":
+		base, step, curve = 700, 330, 160
+	}
+	return base + level*step + level*level*curve
+}
+
+func isAbilityDamageUpgrade(upgrade string) bool {
+	return upgrade == "abilityDamage" ||
+		upgrade == "auraDamage" ||
+		upgrade == "footballDamage" ||
+		upgrade == "bikeDamage" ||
+		upgrade == "pigeonDamage"
 }
 
 func shopState(profile JayliveProfile) map[string]map[string]int {
@@ -646,6 +744,26 @@ func shopState(profile JayliveProfile) map[string]map[string]int {
 		"moveSpeed": {
 			"level": profile.MoveSpeedLevel,
 			"cost":  upgradeCost(profile.MoveSpeedLevel),
+		},
+		"abilityDamage": {
+			"level": profile.AbilityDamageLevel,
+			"cost":  abilityDamageUpgradeCost("abilityDamage", profile.AbilityDamageLevel),
+		},
+		"auraDamage": {
+			"level": profile.AuraDamageLevel,
+			"cost":  abilityDamageUpgradeCost("auraDamage", profile.AuraDamageLevel),
+		},
+		"footballDamage": {
+			"level": profile.FootballDamageLevel,
+			"cost":  abilityDamageUpgradeCost("footballDamage", profile.FootballDamageLevel),
+		},
+		"bikeDamage": {
+			"level": profile.BikeDamageLevel,
+			"cost":  abilityDamageUpgradeCost("bikeDamage", profile.BikeDamageLevel),
+		},
+		"pigeonDamage": {
+			"level": profile.PigeonDamageLevel,
+			"cost":  abilityDamageUpgradeCost("pigeonDamage", profile.PigeonDamageLevel),
 		},
 		"piercing": {
 			"level": profile.PiercingLevel,
