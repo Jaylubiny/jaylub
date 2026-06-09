@@ -39,5 +39,6 @@ make the handlers be in one file instead of those 30 fucking files
 
 make jaylub character ( the basic one ) shlash in distance of 1 block and every 3rd hit is longer
 make some boss in form of parfume on 3rd minute of the time that will spawn 5x enemy2 every 15secs and the old ones get deleted ( at the start of the bossfight make all other enemies stop spawining and delete them )
+shit stack your health
 
 
