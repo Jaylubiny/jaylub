@@ -1,6 +1,6 @@
 {{define "head"}}
-<link rel="stylesheet" href="/web/static/css/jaylive.css?v=purple-bg-1">
-<script src="/web/static/js/jaylive.js" defer></script>
+<link rel="stylesheet" href="/web/static/css/jaylive.css?v=bosses-1">
+<script src="/web/static/js/jaylive.js?v=anti-cheat-1" defer></script>
 {{end}}
 
 {{define "content"}}
@@ -18,6 +18,10 @@
       <div class="hud-panel">Gold <strong id="runGold">0</strong></div>
       <div class="hud-panel">Kills <strong id="runKills">0</strong></div>
       <div class="hud-panel">Time <strong id="runTime">0:00</strong></div>
+      <div class="hud-panel boss-hud" id="bossPanel" hidden>
+        <span id="bossText">Boss 500 / 500</span>
+        <div class="boss-bar"><div id="bossFill"></div></div>
+      </div>
     </div>
 
     <div class="pixel-screen menu-screen" id="mainMenu">

@@ -1,12 +1,15 @@
 package handlers
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"jaylub/internal/auth"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -15,7 +18,14 @@ const maxGameRunGold = 100000
 var errUnknownLeaderboardSort = errors.New("unknown leaderboard sort")
 
 type JayliveService struct {
-	db *sql.DB
+	db         *sql.DB
+	runMu      sync.Mutex
+	activeRuns map[int64]activeJayliveRun
+}
+
+type activeJayliveRun struct {
+	token     string
+	startedAt time.Time
 }
 
 type JayliveProfile struct {
@@ -40,7 +50,10 @@ type LeaderboardEntry struct {
 }
 
 func NewJayliveService(db *sql.DB) *JayliveService {
-	return &JayliveService{db: db}
+	return &JayliveService{
+		db:         db,
+		activeRuns: make(map[int64]activeJayliveRun),
+	}
 }
 
 func (s *JayliveService) Page(w http.ResponseWriter, r *http.Request) {
@@ -263,6 +276,50 @@ func (s *JayliveService) Character(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *JayliveService) StartRun(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+	if err := ensureJayliveProfile(tx, user); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	token, err := randomRunToken()
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	s.runMu.Lock()
+	s.activeRuns[user.ID] = activeJayliveRun{
+		token:     token,
+		startedAt: time.Now().UTC(),
+	}
+	s.runMu.Unlock()
+
+	writeGameJSON(w, map[string]string{"runToken": token})
+}
+
 func (s *JayliveService) SubmitRun(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", "POST")
@@ -277,16 +334,22 @@ func (s *JayliveService) SubmitRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var payload struct {
-		Kills           int `json:"kills"`
-		Gold            int `json:"gold"`
-		SurvivalSeconds int `json:"survivalSeconds"`
+		Kills           int    `json:"kills"`
+		Gold            int    `json:"gold"`
+		SurvivalSeconds int    `json:"survivalSeconds"`
+		RunToken        string `json:"runToken"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&payload); err != nil {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 		return
 	}
-	if payload.Kills < 0 || payload.Gold < 0 || payload.Gold > maxGameRunGold || payload.SurvivalSeconds < 0 {
+	if payload.Kills < 0 || payload.Gold < 0 || payload.Gold > maxGameRunGold || payload.SurvivalSeconds < 0 || payload.RunToken == "" {
 		http.Error(w, "Invalid run result.", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.validateRunResult(user.ID, payload.RunToken, payload.SurvivalSeconds, payload.Kills, payload.Gold); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -348,6 +411,31 @@ func (s *JayliveService) SubmitRun(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *JayliveService) validateRunResult(userID int64, token string, survivalSeconds, kills, gold int) error {
+	s.runMu.Lock()
+	run, ok := s.activeRuns[userID]
+	if ok && run.token == token {
+		delete(s.activeRuns, userID)
+	}
+	s.runMu.Unlock()
+
+	if !ok || run.token != token {
+		return errors.New("Invalid or expired run.")
+	}
+
+	actualSeconds := int(time.Since(run.startedAt).Seconds())
+	if survivalSeconds > actualSeconds+5 {
+		return errors.New("Run time is not valid.")
+	}
+	if kills > maxPlausibleRunKills(survivalSeconds) {
+		return errors.New("Run kills are not valid.")
+	}
+	if gold > maxPlausibleRunGold(survivalSeconds, kills) {
+		return errors.New("Run gold is not valid.")
+	}
+	return nil
+}
+
 func (s *JayliveService) Leaderboard(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", "GET")
@@ -405,6 +493,7 @@ func (s *JayliveService) leaderboard(sort string, limit int) ([]LeaderboardEntry
 	rows, err := s.db.Query(`
 		SELECT username, total_kills, best_run_kills, best_run_seconds
 		FROM game_leaderboard
+		WHERE `+orderColumn+` > 0
 		ORDER BY `+orderColumn+` DESC, username ASC
 		LIMIT ?
 	`, limit)
@@ -438,6 +527,40 @@ func leaderboardOrderColumn(sort string) (string, error) {
 	default:
 		return "", errUnknownLeaderboardSort
 	}
+}
+
+func maxPlausibleRunKills(survivalSeconds int) int {
+	return 80 + survivalSeconds*40
+}
+
+func maxPlausibleRunGold(survivalSeconds, kills int) int {
+	return kills*10 + maxPlausibleBossGold(survivalSeconds) + 100
+}
+
+func maxPlausibleBossGold(survivalSeconds int) int {
+	encounters := survivalSeconds / 180
+	if encounters <= 0 {
+		return 0
+	}
+
+	total := 0
+	rewards := []int{250, 500, 1000}
+	for i := 0; i < encounters; i++ {
+		if i < len(rewards) {
+			total += rewards[i]
+		} else {
+			total += rewards[len(rewards)-1]
+		}
+	}
+	return total
+}
+
+func randomRunToken() (string, error) {
+	var raw [32]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(raw[:]), nil
 }
 
 func ensureJayliveProfile(tx *sql.Tx, user auth.User) error {

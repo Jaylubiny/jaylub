@@ -18,6 +18,9 @@
     runGold: document.getElementById("runGold"),
     runKills: document.getElementById("runKills"),
     runTime: document.getElementById("runTime"),
+    bossPanel: document.getElementById("bossPanel"),
+    bossFill: document.getElementById("bossFill"),
+    bossText: document.getElementById("bossText"),
     finalTime: document.getElementById("finalTime"),
     finalKills: document.getElementById("finalKills"),
     finalGold: document.getElementById("finalGold"),
@@ -38,6 +41,16 @@
   enemy2Image.src = "/static/img/enemy2.png";
   const healImage = new Image();
   healImage.src = "/static/img/heal.png";
+  const bossImages = [new Image(), new Image(), new Image()];
+  bossImages[0].src = "/static/img/boss.png";
+  bossImages[1].src = "/static/img/boss2.png";
+  bossImages[2].src = "/static/img/boss3.png";
+
+  const bossConfigs = [
+    { name: "Boss 1", hp: 500, reward: 250, imageIndex: 0, r: 66, size: 138, speed: 54, cooldown: 1.8, shotSpeed: 230, damage: 14, burstShots: 12 },
+    { name: "Boss 2", hp: 1500, reward: 500, imageIndex: 1, r: 80, size: 168, speed: 62, cooldown: 1.35, shotSpeed: 260, damage: 18, burstShots: 14 },
+    { name: "Boss 3", hp: 3000, reward: 1000, imageIndex: 2, r: 94, size: 198, speed: 70, cooldown: 1.05, shotSpeed: 290, damage: 24, burstShots: 16 },
+  ];
 
   const keys = new Set();
   const mouse = { x: 0, y: 0, worldX: 0, worldY: 0 };
@@ -56,6 +69,10 @@
     lastTime: performance.now(),
     spawnTimer: 0,
     healSpawnTimer: 0,
+    spawnPauseTimer: 0,
+    nextBossAt: 180,
+    bossEncounter: 0,
+    runToken: "",
     hitPause: 0,
     shake: 0,
     dying: false,
@@ -71,6 +88,9 @@
   let numbers = [];
   let slashes = [];
   let projectiles = [];
+  let boss;
+  let bossProjectiles = [];
+  let treasureChests = [];
   let nextEnemyId = 1;
 
   function resizeCanvas() {
@@ -311,11 +331,24 @@
       maxHp: 100 + (p.maxHpLevel || 0) * 12,
       damage: 10 + (p.damageLevel || 0) * 2,
       speed: 245 + (p.moveSpeedLevel || 0) * 13,
-      attackCooldown: Math.max(0.22, 0.62 - (p.attackSpeedLevel || 0) * 0.035),
+      attackCooldown: attackCooldownFromLevel(p.attackSpeedLevel || 0),
     };
   }
 
-  function startRun() {
+  function attackCooldownFromLevel(level) {
+    return Math.max(0.018, 0.62 / (1 + level * 0.045 + Math.sqrt(level) * 0.45));
+  }
+
+  async function startRun() {
+    const runResponse = await fetch("/game/jaylive/start", {
+      method: "POST",
+      headers: { "Accept": "application/json" },
+    });
+    if (!runResponse.ok) return;
+    const runData = await runResponse.json();
+    state.runToken = runData.runToken || "";
+    if (!state.runToken) return;
+
     const stats = statsFromProfile();
     player = {
       x: world.width / 2,
@@ -342,9 +375,16 @@
     numbers = [];
     slashes = [];
     projectiles = [];
+    bossProjectiles = [];
+    treasureChests = [];
+    boss = undefined;
     nextEnemyId = 1;
     state.spawnTimer = 0;
     state.healSpawnTimer = 8 + Math.random() * 10;
+    state.spawnPauseTimer = 0;
+    state.nextBossAt = 180;
+    state.bossEncounter = 0;
+    state.runToken = runData.runToken;
     state.shake = 0;
     state.hitPause = 0;
     state.paused = false;
@@ -359,19 +399,21 @@
 
   function difficulty() {
     const minutes = Math.max(0, player.survivalSeconds / 60);
+    const sizeScale = Math.min(1.45, 1 + minutes * 0.035);
     return {
-      hp: 26 + minutes * 14,
+      hp: (26 + minutes * 14) * (1 + minutes * 0.025),
       damage: 8 + minutes * 3.2,
       speed: 86 + minutes * 7,
       spawnEvery: Math.max(0.22, 1.15 - minutes * 0.08),
       pack: Math.min(5, 1 + Math.floor(minutes / 1.5)),
       eliteChance: player.survivalSeconds < 45 ? 0 : Math.min(0.58, 0.08 + (player.survivalSeconds - 45) / 260),
+      sizeScale,
     };
   }
 
-  function spawnEnemy() {
+  function spawnEnemy(options = {}) {
     const d = difficulty();
-    const elite = Math.random() < d.eliteChance;
+    const elite = options.elite ?? Math.random() < d.eliteChance;
     const side = Math.floor(Math.random() * 4);
     let x = 0;
     let y = 0;
@@ -379,16 +421,20 @@
     if (side === 1) { x = world.width + 40; y = Math.random() * world.height; }
     if (side === 2) { x = Math.random() * world.width; y = world.height + 40; }
     if (side === 3) { x = -40; y = Math.random() * world.height; }
+    const sizeScale = options.sizeScale || d.sizeScale;
+    const radius = (elite ? 28 : 22) * sizeScale;
     enemies.push({
       id: nextEnemyId++,
-      x,
-      y,
+      x: options.x ?? x,
+      y: options.y ?? y,
       type: elite ? "elite" : "normal",
-      r: elite ? 28 : 22,
-      hp: elite ? d.hp * 2.35 : d.hp,
-      maxHp: elite ? d.hp * 2.35 : d.hp,
-      damage: elite ? d.damage * 1.75 : d.damage,
-      speed: (elite ? d.speed * 1.12 : d.speed) * (0.88 + Math.random() * 0.24),
+      bossMinion: Boolean(options.bossMinion),
+      r: radius,
+      size: (elite ? 60 : 48) * sizeScale,
+      hp: options.hp ?? (elite ? d.hp * 2.35 : d.hp),
+      maxHp: options.hp ?? (elite ? d.hp * 2.35 : d.hp),
+      damage: options.damage ?? (elite ? d.damage * 1.75 : d.damage),
+      speed: options.speed ?? ((elite ? d.speed * 1.12 : d.speed) * (0.88 + Math.random() * 0.24)),
       hitTimer: 0,
       contactTimer: 0,
       angle: 0,
@@ -414,7 +460,7 @@
     }
 
     player.survivalSeconds = Math.floor((performance.now() - player.startedAt) / 1000);
-    player.attackTimer = Math.max(0, player.attackTimer - dt);
+    player.attackTimer -= dt;
     player.invuln = Math.max(0, player.invuln - dt);
     state.shake = Math.max(0, state.shake - dt * 28);
 
@@ -422,11 +468,14 @@
     updatePlayer(dt);
     updateCamera();
     autoAttack();
+    updateBossTiming(dt);
+    updateBoss(dt);
     updateSpawns(dt);
     updateHealSpawns(dt);
     updateEnemies(dt);
     updateDrops(dt);
     updateProjectiles(dt);
+    updateBossProjectiles(dt);
     updateEffects(dt);
     updateHud();
 
@@ -461,7 +510,174 @@
     camera.y = clamp(player.y - viewHeight() / 2, 0, world.height - viewHeight());
   }
 
+  function updateBossTiming() {
+    if (boss || state.spawnPauseTimer > 0) return;
+    if (player.survivalSeconds >= state.nextBossAt) startBossEncounter();
+  }
+
+  function startBossEncounter() {
+    state.bossEncounter++;
+    const config = bossConfigs[Math.min(state.bossEncounter - 1, bossConfigs.length - 1)];
+    enemies = [];
+    bossProjectiles = [];
+    state.spawnTimer = 0;
+    state.healSpawnTimer = Math.max(state.healSpawnTimer, 4);
+
+    const angle = Math.random() * Math.PI * 2;
+    boss = {
+      ...config,
+      x: clamp(player.x + Math.cos(angle) * 520, config.r + 30, world.width - config.r - 30),
+      y: clamp(player.y + Math.sin(angle) * 520, config.r + 30, world.height - config.r - 30),
+      hp: config.hp,
+      maxHp: config.hp,
+      attackTimer: 1.2,
+      patternIndex: 0,
+      minionTimer: 0,
+      hitTimer: 0,
+      angle: 0,
+    };
+    numbers.push({ x: boss.x, y: boss.y - boss.r - 28, text: `${boss.name} appears`, color: "#d5a43a", life: 1.4 });
+    burst(boss.x, boss.y, "#d5a43a", 42);
+    maintainBossMinions();
+  }
+
+  function updateBoss(dt) {
+    if (!boss) return;
+
+    const dx = player.x - boss.x;
+    const dy = player.y - boss.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    boss.angle = Math.atan2(dy, dx);
+    const desired = 340;
+    const moveSign = dist > desired + 60 ? 1 : dist < desired - 90 ? -1 : 0;
+    boss.x = clamp(boss.x + (dx / dist) * boss.speed * moveSign * dt, boss.r, world.width - boss.r);
+    boss.y = clamp(boss.y + (dy / dist) * boss.speed * moveSign * dt, boss.r, world.height - boss.r);
+    boss.hitTimer = Math.max(0, boss.hitTimer - dt);
+
+    boss.attackTimer -= dt;
+    if (boss.attackTimer <= 0) {
+      performBossAttack();
+      boss.patternIndex = (boss.patternIndex + 1) % 3;
+      boss.attackTimer = boss.cooldown;
+    }
+
+    boss.minionTimer -= dt;
+    if (boss.minionTimer <= 0) {
+      maintainBossMinions();
+      boss.minionTimer = 15;
+    }
+  }
+
+  function performBossAttack() {
+    if (!boss) return;
+    if (boss.patternIndex === 0) {
+      fireBossProjectile(boss.angle);
+      return;
+    }
+    if (boss.patternIndex === 1) {
+      const spread = Math.PI / 9;
+      for (let i = -2; i <= 2; i++) fireBossProjectile(boss.angle + i * spread);
+      return;
+    }
+    for (let i = 0; i < boss.burstShots; i++) {
+      fireBossProjectile((Math.PI * 2 * i) / boss.burstShots);
+    }
+  }
+
+  function fireBossProjectile(angle) {
+    const speed = boss.shotSpeed;
+    bossProjectiles.push({
+      x: boss.x + Math.cos(angle) * (boss.r + 12),
+      y: boss.y + Math.sin(angle) * (boss.r + 12),
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      r: 17,
+      damage: boss.damage,
+      angle,
+      life: 6,
+    });
+  }
+
+  function updateBossProjectiles(dt) {
+    for (let i = bossProjectiles.length - 1; i >= 0; i--) {
+      const projectile = bossProjectiles[i];
+      projectile.x += projectile.vx * dt;
+      projectile.y += projectile.vy * dt;
+      projectile.life -= dt;
+
+      if (circleHit(player, projectile) && player.invuln <= 0) {
+        damagePlayer(projectile.damage);
+        burst(projectile.x, projectile.y, "#a93b36", 10);
+        bossProjectiles.splice(i, 1);
+        continue;
+      }
+
+      if (
+        projectile.life <= 0 ||
+        projectile.x < -80 ||
+        projectile.y < -80 ||
+        projectile.x > world.width + 80 ||
+        projectile.y > world.height + 80
+      ) {
+        bossProjectiles.splice(i, 1);
+      }
+    }
+  }
+
+  function maintainBossMinions() {
+    const active = enemies.filter((enemy) => enemy.bossMinion).length;
+    for (let i = active; i < 5; i++) spawnBossMinion();
+  }
+
+  function spawnBossMinion() {
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 260 + Math.random() * 180;
+    const d = difficulty();
+    spawnEnemy({
+      x: clamp((boss?.x ?? player.x) + Math.cos(angle) * distance, 80, world.width - 80),
+      y: clamp((boss?.y ?? player.y) + Math.sin(angle) * distance, 80, world.height - 80),
+      elite: true,
+      bossMinion: true,
+      sizeScale: Math.max(1.05, d.sizeScale),
+      hp: d.hp * 2.1,
+      damage: d.damage * 1.55,
+      speed: d.speed * 1.08,
+    });
+  }
+
+  function damageBoss(amount, x, y) {
+    if (!boss) return;
+    boss.hp -= amount;
+    boss.hitTimer = 0.14;
+    numbers.push({ x: x || boss.x, y: (y || boss.y) - boss.r - 18, text: String(amount), color: "#f1ead7", life: 0.66 });
+    burst(x || boss.x, y || boss.y, "#d5a43a", 10);
+    if (boss.hp <= 0) defeatBoss();
+  }
+
+  function defeatBoss() {
+    if (!boss) return;
+    const defeated = boss;
+    treasureChests.push({
+      x: defeated.x,
+      y: defeated.y,
+      value: defeated.reward,
+      life: 0,
+      collected: false,
+    });
+    numbers.push({ x: defeated.x, y: defeated.y - defeated.r - 36, text: `${defeated.name} defeated`, color: "#d5a43a", life: 1.35 });
+    burst(defeated.x, defeated.y, "#d5a43a", 60);
+    boss = undefined;
+    bossProjectiles = [];
+    enemies = [];
+    state.spawnPauseTimer = 5;
+    state.nextBossAt = player.survivalSeconds + 180;
+  }
+
   function updateSpawns(dt) {
+    if (boss) return;
+    state.spawnPauseTimer = Math.max(0, state.spawnPauseTimer - dt);
+    if (state.spawnPauseTimer > 0) return;
+
     const d = difficulty();
     state.spawnTimer -= dt;
     if (state.spawnTimer <= 0) {
@@ -506,6 +722,22 @@
   }
 
   function updateDrops(dt) {
+    for (let i = treasureChests.length - 1; i >= 0; i--) {
+      const chest = treasureChests[i];
+      chest.life += dt;
+      if (!chest.collected && Math.hypot(player.x - chest.x, player.y - chest.y) < player.r + 34) {
+        chest.collected = true;
+        const healed = Math.ceil(player.maxHp * 0.5);
+        player.runGold += chest.value;
+        player.hp += healed;
+        numbers.push({ x: chest.x, y: chest.y - 34, text: `+${chest.value} gold`, color: "#d5a43a", life: 1.1 });
+        numbers.push({ x: chest.x, y: chest.y - 58, text: `+${healed} HP`, color: "#9bd27b", life: 1.1 });
+        burst(chest.x, chest.y, "#d5a43a", 36);
+        burst(chest.x, chest.y, "#7fb069", 18);
+        treasureChests.splice(i, 1);
+      }
+    }
+
     for (let i = goldDrops.length - 1; i >= 0; i--) {
       const drop = goldDrops[i];
       drop.life += dt;
@@ -521,14 +753,10 @@
       const drop = healDrops[i];
       drop.life += dt;
       if (Math.hypot(player.x - drop.x, player.y - drop.y) < player.r + 20) {
-        const healed = Math.min(drop.amount, player.maxHp - player.hp);
-        if (healed > 0) {
-          player.hp += healed;
-          burst(drop.x, drop.y, "#7fb069", 14);
-          numbers.push({ x: drop.x, y: drop.y - 20, text: `+${healed} HP`, color: "#9bd27b", life: 0.9 });
-        } else {
-          burst(drop.x, drop.y, "#e7dfc9", 8);
-        }
+        const healed = drop.amount;
+        player.hp += healed;
+        burst(drop.x, drop.y, "#7fb069", 14);
+        numbers.push({ x: drop.x, y: drop.y - 20, text: `+${healed} HP`, color: "#9bd27b", life: 0.9 });
         healDrops.splice(i, 1);
       }
     }
@@ -580,6 +808,12 @@
         }
       }
 
+      if (!hit && boss && !projectile.hitBoss && Math.hypot(projectile.x - boss.x, projectile.y - boss.y) <= projectile.r + boss.r) {
+        projectile.hitBoss = true;
+        damageBoss(projectile.damage, projectile.x, projectile.y);
+        hit = true;
+      }
+
       if (hit || projectile.life <= 0 || projectile.x < 0 || projectile.y < 0 || projectile.x > world.width || projectile.y > world.height) {
         projectiles.splice(i, 1);
       }
@@ -587,11 +821,10 @@
   }
 
   function attack() {
-    if (!state.running || state.paused || state.dying || player.attackTimer > 0) return;
-    player.attackTimer = player.attackCooldown;
+    if (!state.running || state.paused || state.dying || player.attackTimer > 0) return false;
     if (player.character === "goblin_jaylub") {
       shootProjectile();
-      return;
+      return true;
     }
 
     const slash = { x: player.x, y: player.y, angle: player.angle, life: 0.16, maxLife: 0.16 };
@@ -615,10 +848,29 @@
     for (let i = enemies.length - 1; i >= 0; i--) {
       if (enemies[i].hp <= 0) killEnemy(i);
     }
+
+    if (boss) {
+      const dx = boss.x - player.x;
+      const dy = boss.y - player.y;
+      const dist = Math.hypot(dx, dy);
+      const angle = Math.atan2(dy, dx);
+      const diff = Math.abs(wrapAngle(angle - player.angle));
+      if (dist < boss.r + 92 && diff < 1.05) {
+        damageBoss(player.damage, boss.x, boss.y);
+      }
+    }
+    return true;
   }
 
   function autoAttack() {
-    attack();
+    let attacks = 0;
+    while (attacks < 4 && attack()) {
+      player.attackTimer += player.attackCooldown;
+      attacks++;
+    }
+    if (attacks >= 4 && player.attackTimer <= 0) {
+      player.attackTimer = player.attackCooldown;
+    }
   }
 
   function shootProjectile() {
@@ -705,6 +957,11 @@
     numbers = [];
     slashes = [];
     projectiles = [];
+    bossProjectiles = [];
+    treasureChests = [];
+    boss = undefined;
+    state.spawnPauseTimer = 0;
+    state.runToken = "";
     showScreen("menu");
   }
 
@@ -724,6 +981,7 @@
         kills: player.kills,
         gold: player.runGold,
         survivalSeconds: player.survivalSeconds,
+        runToken: state.runToken,
       }),
     });
     if (response.ok) {
@@ -747,7 +1005,10 @@
     drawWorld();
     for (const drop of goldDrops) drawGold(drop);
     for (const drop of healDrops) drawHeal(drop);
+    for (const chest of treasureChests) drawTreasure(chest);
     for (const enemy of enemies) drawEnemy(enemy);
+    if (boss) drawBoss();
+    for (const projectile of bossProjectiles) drawBossProjectile(projectile);
     if (player) {
       drawPlayer();
       for (const slash of slashes) drawSlash(slash);
@@ -804,9 +1065,9 @@
   }
 
   function drawEnemy(enemy) {
-    const size = enemy.type === "elite" ? 60 : 48;
+    const size = enemy.size || (enemy.type === "elite" ? 60 : 48);
     const half = size / 2;
-    const shadowW = enemy.type === "elite" ? 34 : 40;
+    const shadowW = enemy.type === "elite" ? size * 0.56 : size * 0.82;
     const shadowH = enemy.type === "elite" ? 7 : 10;
     const image = enemy.type === "elite" ? enemy2Image : enemyImage;
     ctx.save();
@@ -828,6 +1089,24 @@
     ctx.fillRect(enemy.x - barW / 2, enemy.y - half - 10, barW, 6);
     ctx.fillStyle = enemy.type === "elite" ? "#c46a42" : "#a93b36";
     ctx.fillRect(enemy.x - barW / 2 + 2, enemy.y - half - 8, (barW - 4) * clamp(enemy.hp / enemy.maxHp, 0, 1), 2);
+  }
+
+  function drawBoss() {
+    const image = bossImages[boss.imageIndex];
+    const half = boss.size / 2;
+    ctx.save();
+    ctx.translate(Math.round(boss.x), Math.round(boss.y));
+    ctx.rotate(boss.angle);
+    ctx.globalAlpha = boss.hitTimer > 0 ? 0.72 : 1;
+    ctx.fillStyle = "rgba(0, 0, 0, 0.34)";
+    ctx.fillRect(-half * 0.55, half - 8, half * 1.1, 16);
+    if (image.complete && image.naturalWidth) {
+      ctx.drawImage(image, -half, -half, boss.size, boss.size);
+    } else {
+      ctx.fillStyle = "#8a4f3b";
+      ctx.fillRect(-half, -half, boss.size, boss.size);
+    }
+    ctx.restore();
   }
 
   function drawSlash(slash) {
@@ -858,6 +1137,22 @@
     ctx.restore();
   }
 
+  function drawBossProjectile(projectile) {
+    const size = 34;
+    ctx.save();
+    ctx.translate(projectile.x, projectile.y);
+    ctx.rotate(projectile.angle);
+    ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+    ctx.fillRect(-13, 12, 26, 6);
+    if (enemyImage.complete && enemyImage.naturalWidth) {
+      ctx.drawImage(enemyImage, -size / 2, -size / 2, size, size);
+    } else {
+      ctx.fillStyle = "#758d54";
+      ctx.fillRect(-14, -14, 28, 28);
+    }
+    ctx.restore();
+  }
+
   function drawGold(drop) {
     const bob = Math.sin(drop.life * 8) * 3;
     ctx.fillStyle = "#0a0d0e";
@@ -883,6 +1178,22 @@
     ctx.fillRect(drop.x - 11, drop.y - 4 + bob, 22, 8);
   }
 
+  function drawTreasure(chest) {
+    const bob = Math.sin(chest.life * 5) * 3;
+    ctx.fillStyle = "rgba(0, 0, 0, 0.32)";
+    ctx.fillRect(chest.x - 24, chest.y + 18, 48, 10);
+    ctx.fillStyle = "#5c2f1f";
+    ctx.fillRect(chest.x - 24, chest.y - 12 + bob, 48, 32);
+    ctx.fillStyle = "#d5a43a";
+    ctx.fillRect(chest.x - 24, chest.y - 12 + bob, 48, 9);
+    ctx.fillRect(chest.x - 4, chest.y - 12 + bob, 8, 32);
+    ctx.fillStyle = "#f1d879";
+    ctx.fillRect(chest.x - 2, chest.y + 2 + bob, 4, 6);
+    ctx.strokeStyle = "#0a0d0e";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(chest.x - 24, chest.y - 12 + bob, 48, 32);
+  }
+
   function drawParticle(p) {
     ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
     ctx.fillStyle = p.color;
@@ -906,6 +1217,13 @@
     ui.runGold.textContent = player.runGold;
     ui.runKills.textContent = player.kills;
     ui.runTime.textContent = formatTime(player.survivalSeconds);
+    if (ui.bossPanel) {
+      ui.bossPanel.hidden = !boss;
+      if (boss) {
+        ui.bossFill.style.width = `${clamp(boss.hp / boss.maxHp, 0, 1) * 100}%`;
+        ui.bossText.textContent = `${boss.name} ${Math.max(0, Math.ceil(boss.hp))} / ${boss.maxHp}`;
+      }
+    }
   }
 
   function burst(x, y, color, count) {

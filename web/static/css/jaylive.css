@@ -131,6 +131,33 @@ main {
   background: linear-gradient(90deg, #7d2e2a, #c4563f);
 }
 
+.boss-hud {
+  flex: 1 1 340px;
+  max-width: 560px;
+}
+
+.boss-hud[hidden] {
+  display: none;
+}
+
+.boss-hud span {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.boss-bar {
+  height: 16px;
+  padding: 3px;
+  background: #0a0d0e;
+  border: 2px solid #4b4538;
+}
+
+.boss-bar div {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, #7d2e2a, #d5a43a);
+}
+
 .pixel-screen {
   position: absolute;
   inset: 0;

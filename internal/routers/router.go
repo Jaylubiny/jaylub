@@ -25,6 +25,7 @@ func Basic(authService *auth.Service) http.Handler {
 		{"/game/test", handlers.GameTest},
 		{"/game/jaylive", jayliveService.Page},
 		{"/game/jaylive/state", jayliveService.State},
+		{"/game/jaylive/start", jayliveService.StartRun},
 		{"/game/jaylive/shop", jayliveService.BuyUpgrade},
 		{"/game/jaylive/character", jayliveService.Character},
 		{"/game/jaylive/run", jayliveService.SubmitRun},
