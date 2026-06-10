@@ -35,6 +35,7 @@ type JayliveProfile struct {
 	LifetimeKills       int    `json:"lifetimeKills"`
 	SelectedCharacter   string `json:"selectedCharacter"`
 	GoblinUnlocked      bool   `json:"goblinJaylubUnlocked"`
+	VampireUnlocked     bool   `json:"vampireJaylubUnlocked"`
 	DamageLevel         int    `json:"damageLevel"`
 	PiercingLevel       int    `json:"piercingLevel"`
 	MaxHPLevel          int    `json:"maxHpLevel"`
@@ -136,7 +137,7 @@ func (s *JayliveService) BuyUpgrade(w http.ResponseWriter, r *http.Request) {
 	}
 
 	profile, err := scanJayliveProfile(tx.QueryRow(`
-		SELECT username, gold, lifetime_kills, selected_character, goblin_jaylub_unlocked, damage_level, piercing_level, max_hp_level, attack_speed_level, move_speed_level, ability_damage_level, aura_damage_level, football_damage_level, bike_damage_level, pigeon_damage_level, game_level, game_xp
+		SELECT username, gold, lifetime_kills, selected_character, goblin_jaylub_unlocked, vampire_jaylub_unlocked, damage_level, piercing_level, max_hp_level, attack_speed_level, move_speed_level, ability_damage_level, aura_damage_level, football_damage_level, bike_damage_level, pigeon_damage_level, game_level, game_xp
 		FROM game_profiles
 		WHERE user_id = ?
 	`, user.ID))
@@ -223,7 +224,7 @@ func (s *JayliveService) Character(w http.ResponseWriter, r *http.Request) {
 	}
 
 	profile, err := scanJayliveProfile(tx.QueryRow(`
-		SELECT username, gold, lifetime_kills, selected_character, goblin_jaylub_unlocked, damage_level, piercing_level, max_hp_level, attack_speed_level, move_speed_level, ability_damage_level, aura_damage_level, football_damage_level, bike_damage_level, pigeon_damage_level, game_level, game_xp
+		SELECT username, gold, lifetime_kills, selected_character, goblin_jaylub_unlocked, vampire_jaylub_unlocked, damage_level, piercing_level, max_hp_level, attack_speed_level, move_speed_level, ability_damage_level, aura_damage_level, football_damage_level, bike_damage_level, pigeon_damage_level, game_level, game_xp
 		FROM game_profiles
 		WHERE user_id = ?
 	`, user.ID))
@@ -234,28 +235,41 @@ func (s *JayliveService) Character(w http.ResponseWriter, r *http.Request) {
 
 	switch payload.Action {
 	case "buy":
-		if payload.Character != "goblin_jaylub" {
+		if payload.Character != "goblin_jaylub" && payload.Character != "character3" {
 			http.Error(w, "Unknown character.", http.StatusBadRequest)
 			return
 		}
-		if profile.GoblinUnlocked {
+		if payload.Character == "goblin_jaylub" && profile.GoblinUnlocked {
 			break
 		}
-		if profile.Gold < 100 {
+		if payload.Character == "character3" && profile.VampireUnlocked {
+			break
+		}
+		cost := 100
+		column := "goblin_jaylub_unlocked"
+		if payload.Character == "character3" {
+			cost = 300
+			column = "vampire_jaylub_unlocked"
+		}
+		if profile.Gold < cost {
 			http.Error(w, "Not enough gold.", http.StatusBadRequest)
 			return
 		}
 		_, err = tx.Exec(`
 			UPDATE game_profiles
-			SET gold = gold - 100, goblin_jaylub_unlocked = 1, selected_character = 'goblin_jaylub', username = ?, updated_at = ?
+			SET gold = gold - ?, `+column+` = 1, selected_character = ?, username = ?, updated_at = ?
 			WHERE user_id = ?
-		`, user.Username, time.Now().UTC().Format(time.RFC3339), user.ID)
+		`, cost, payload.Character, user.Username, time.Now().UTC().Format(time.RFC3339), user.ID)
 	case "select":
-		if payload.Character != "jaylub" && payload.Character != "goblin_jaylub" {
+		if payload.Character != "jaylub" && payload.Character != "goblin_jaylub" && payload.Character != "character3" {
 			http.Error(w, "Unknown character.", http.StatusBadRequest)
 			return
 		}
 		if payload.Character == "goblin_jaylub" && !profile.GoblinUnlocked {
+			http.Error(w, "Character is locked.", http.StatusBadRequest)
+			return
+		}
+		if payload.Character == "character3" && !profile.VampireUnlocked {
 			http.Error(w, "Character is locked.", http.StatusBadRequest)
 			return
 		}
@@ -500,7 +514,7 @@ func (s *JayliveService) profile(r *http.Request) (JayliveProfile, error) {
 		return JayliveProfile{}, err
 	}
 	return scanJayliveProfile(s.db.QueryRow(`
-		SELECT username, gold, lifetime_kills, selected_character, goblin_jaylub_unlocked, damage_level, piercing_level, max_hp_level, attack_speed_level, move_speed_level, ability_damage_level, aura_damage_level, football_damage_level, bike_damage_level, pigeon_damage_level, game_level, game_xp
+		SELECT username, gold, lifetime_kills, selected_character, goblin_jaylub_unlocked, vampire_jaylub_unlocked, damage_level, piercing_level, max_hp_level, attack_speed_level, move_speed_level, ability_damage_level, aura_damage_level, football_damage_level, bike_damage_level, pigeon_damage_level, game_level, game_xp
 		FROM game_profiles
 		WHERE user_id = ?
 	`, user.ID))
@@ -623,12 +637,14 @@ func ensureJayliveProfile(tx *sql.Tx, user auth.User) error {
 func scanJayliveProfile(row interface{ Scan(dest ...any) error }) (JayliveProfile, error) {
 	var profile JayliveProfile
 	var goblinUnlocked int
+	var vampireUnlocked int
 	err := row.Scan(
 		&profile.Username,
 		&profile.Gold,
 		&profile.LifetimeKills,
 		&profile.SelectedCharacter,
 		&goblinUnlocked,
+		&vampireUnlocked,
 		&profile.DamageLevel,
 		&profile.PiercingLevel,
 		&profile.MaxHPLevel,
@@ -643,6 +659,13 @@ func scanJayliveProfile(row interface{ Scan(dest ...any) error }) (JayliveProfil
 		&profile.GameXP,
 	)
 	profile.GoblinUnlocked = goblinUnlocked == 1
+	profile.VampireUnlocked = vampireUnlocked == 1
+	if profile.SelectedCharacter == "goblin_jaylub" && !profile.GoblinUnlocked {
+		profile.SelectedCharacter = "jaylub"
+	}
+	if profile.SelectedCharacter == "character3" && !profile.VampireUnlocked {
+		profile.SelectedCharacter = "jaylub"
+	}
 	return profile, err
 }
 

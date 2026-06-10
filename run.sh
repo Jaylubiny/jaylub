@@ -8,6 +8,9 @@ LOG_FILE="server.log"
 
 mkdir -p "$BIN_DIR"
 
+echo "Obfuscating Jaylive client..."
+go run tools/obfuscate_jaylive.go
+
 echo "Building full server..."
 go build -o "$BIN_PATH" ./cmd/server
 

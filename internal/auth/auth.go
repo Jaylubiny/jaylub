@@ -110,6 +110,7 @@ func (s *Service) initSchema() error {
 			lifetime_kills INTEGER NOT NULL DEFAULT 0,
 			selected_character TEXT NOT NULL DEFAULT 'jaylub',
 			goblin_jaylub_unlocked INTEGER NOT NULL DEFAULT 0,
+			vampire_jaylub_unlocked INTEGER NOT NULL DEFAULT 0,
 			damage_level INTEGER NOT NULL DEFAULT 0,
 			max_hp_level INTEGER NOT NULL DEFAULT 0,
 			attack_speed_level INTEGER NOT NULL DEFAULT 0,
@@ -149,6 +150,9 @@ func (s *Service) initSchema() error {
 		return err
 	}
 	if err := s.addColumnIfMissing("game_profiles", "goblin_jaylub_unlocked", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("game_profiles", "vampire_jaylub_unlocked", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
 	if err := s.addColumnIfMissing("game_profiles", "piercing_level", "INTEGER NOT NULL DEFAULT 0"); err != nil {
