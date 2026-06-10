@@ -35,10 +35,12 @@ DONE ^
 
 
 
-vempire jayob that bites the enemy and after every kill heals 1-2hp
+vempire jayob that shoots at the enemy like vampire kinves in terraria the enemy and after every kill heals 1-2hp
 
 more maps with bioms with stronger and weaker enemies (wit future custom skin for enemies)
 
 mountain climbing jaylu with 2 daggers
+
+
 
 
