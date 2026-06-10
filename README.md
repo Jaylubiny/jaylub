@@ -30,8 +30,17 @@ WORKING ON ^
 DONE ^
 
 
-vempire jayob that shoots at the enemy like vampire kinves in terraria the enemy and after every kill heals 1-2hp
 
-more maps with bioms with stronger and weaker enemies (wit future custom skin for enemies)
 
-mountain climbing jaylu with 2 daggers
+
+make jaylub character ( the basic one ) shlash in distance of 1 block and every 3rd hit is longer
+
+make rng items that will help you kill enemies evey minute new one 
+
+vempire jayob that bites the enemy and after every kill heals 1-2hp
+
+level system with some kind of path that will help you get better stats to get fruther
+
+random spawning chests every 15sec with small boost of one stat for the game
+
+make some kind of icon next to the chat card of how many messages are there new 
