@@ -4,6 +4,11 @@
   const stage = document.querySelector(".survivor-stage");
   const hud = document.getElementById("gameHud");
   const fullscreenButtons = document.querySelectorAll("[data-fullscreen-button]");
+  const goldLabels = document.querySelectorAll("[data-gold]");
+  const lifetimeKillLabels = document.querySelectorAll("[data-lifetime-kills]");
+  const shopCategoryButtons = document.querySelectorAll("[data-shop-category]");
+  const leaderboardSortButtons = document.querySelectorAll("[data-leaderboard-sort]");
+  const menuBackButtons = document.querySelectorAll("[data-menu-back]");
   const screens = {
     menu: document.getElementById("mainMenu"),
     shop: document.getElementById("shopScreen"),
@@ -83,7 +88,16 @@
   const mouse = { x: 0, y: 0, worldX: 0, worldY: 0 };
   const world = { width: 2600, height: 2000 };
   const camera = { x: 0, y: 0 };
+  const viewport = { width: 960, height: 540, dpr: window.devicePixelRatio || 1, left: 0, top: 0 };
+  const perf = {
+    enemyCellSize: 256,
+    drawPadding: 160,
+    maxParticles: 360,
+    maxNumbers: 120,
+  };
+  const enemyGrid = new Map();
   const rngDetails = makeEnvironment();
+  const worldCanvas = makeWorldCanvas();
   const state = {
     mode: "menu",
     profile: null,
@@ -109,6 +123,19 @@
     deathTimer: 0,
     submittedGameOver: false,
   };
+  const hudCache = {
+    hpWidth: "",
+    hpText: "",
+    gold: "",
+    kills: "",
+    level: "",
+    xpWidth: "",
+    xpText: "",
+    time: "",
+    bossVisible: false,
+    bossWidth: "",
+    bossText: "",
+  };
 
   let player;
   let enemies = [];
@@ -124,10 +151,19 @@
   let itemChests = [];
   let boostChests = [];
   let nextEnemyId = 1;
+  let loopHandle = 0;
+  let loopActive = false;
+  let runStatsDirty = true;
+  let cachedDifficulty = null;
+  let cachedDifficultyAt = -1;
 
   function resizeCanvas() {
     const rect = stage.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
+    viewport.dpr = dpr;
+    viewport.width = Math.max(640, Math.floor(rect.width));
+    viewport.height = Math.max(360, Math.floor(rect.height));
+    updateCanvasBounds();
     canvas.width = Math.max(640, Math.floor(rect.width * dpr));
     canvas.height = Math.max(360, Math.floor(rect.height * dpr));
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -135,11 +171,17 @@
   }
 
   function viewWidth() {
-    return canvas.width / (window.devicePixelRatio || 1);
+    return viewport.width;
   }
 
   function viewHeight() {
-    return canvas.height / (window.devicePixelRatio || 1);
+    return viewport.height;
+  }
+
+  function updateCanvasBounds() {
+    const rect = canvas.getBoundingClientRect();
+    viewport.left = rect.left;
+    viewport.top = rect.top;
   }
 
   function showScreen(name) {
@@ -161,10 +203,10 @@
   }
 
   function renderMeta() {
-    document.querySelectorAll("[data-gold]").forEach((el) => {
+    goldLabels.forEach((el) => {
       el.textContent = state.profile?.gold ?? 0;
     });
-    document.querySelectorAll("[data-lifetime-kills]").forEach((el) => {
+    lifetimeKillLabels.forEach((el) => {
       el.textContent = state.profile?.lifetimeKills ?? 0;
     });
     renderCharacters();
@@ -241,7 +283,7 @@
 
   function renderShop() {
     const upgrades = shopUpgrades();
-    document.querySelectorAll("[data-shop-category]").forEach((button) => {
+    shopCategoryButtons.forEach((button) => {
       const active = button.dataset.shopCategory === state.shopCategory;
       button.classList.toggle("is-active", active);
       button.classList.toggle("muted", !active);
@@ -300,7 +342,7 @@
     const meta = leaderboardMeta(state.leaderboardSort);
     ui.leaderboardEyebrow.textContent = meta.eyebrow;
     ui.leaderboardValueHeader.textContent = meta.label;
-    document.querySelectorAll("[data-leaderboard-sort]").forEach((button) => {
+    leaderboardSortButtons.forEach((button) => {
       const active = button.dataset.leaderboardSort === state.leaderboardSort;
       button.classList.toggle("is-active", active);
       button.classList.toggle("muted", !active);
@@ -489,8 +531,17 @@
     state.deathTimer = 0;
     state.submittedGameOver = false;
     state.running = true;
+    runStatsDirty = true;
+    cachedDifficulty = null;
+    cachedDifficultyAt = -1;
+    refreshRunStats();
     showScreen("game");
     updateHud();
+    startGameLoop();
+  }
+
+  function markRunStatsDirty() {
+    runStatsDirty = true;
   }
 
   function refreshRunStats() {
@@ -499,6 +550,11 @@
     player.damage = Math.max(1, Math.round(player.baseDamage * player.runDamageMult));
     player.speed = player.baseSpeed * player.runSpeedMult;
     player.attackCooldown = Math.max(0.014, (player.baseAttackCooldown * characterAttackDelay(player.character)) / player.runAttackSpeedMult);
+    runStatsDirty = false;
+  }
+
+  function refreshRunStatsIfNeeded() {
+    if (runStatsDirty) refreshRunStats();
   }
 
   function characterAttackDelay(character) {
@@ -535,17 +591,21 @@
   }
 
   function difficulty() {
-    const minutes = Math.max(0, player.survivalSeconds / 60);
+    const seconds = player.survivalSeconds;
+    if (cachedDifficultyAt === seconds) return cachedDifficulty;
+    cachedDifficultyAt = seconds;
+    const minutes = Math.max(0, seconds / 60);
     const sizeScale = Math.min(1.45, 1 + minutes * 0.035);
-    return {
+    cachedDifficulty = {
       hp: (26 + minutes * 14) * (1 + minutes * 0.025),
       damage: 8 + minutes * 3.2,
       speed: 86 + minutes * 7,
       spawnEvery: Math.max(0.22, 1.15 - minutes * 0.08),
       pack: Math.min(5, 1 + Math.floor(minutes / 1.5)),
-      eliteChance: player.survivalSeconds < 45 ? 0 : Math.min(0.58, 0.08 + (player.survivalSeconds - 45) / 260),
+      eliteChance: seconds < 45 ? 0 : Math.min(0.58, 0.08 + (seconds - 45) / 260),
       sizeScale,
     };
+    return cachedDifficulty;
   }
 
   function spawnEnemy(options = {}) {
@@ -576,6 +636,7 @@
       contactTimer: 0,
       footballContactTimer: 0,
       angle: 0,
+      dead: false,
     });
   }
 
@@ -603,17 +664,18 @@
     state.shake = Math.max(0, state.shake - dt * 28);
 
     updateMouseWorld();
-    refreshRunStats();
+    refreshRunStatsIfNeeded();
     updatePlayer(dt);
     updateCamera();
-    autoAttack();
     updateBossTiming(dt);
     updateBoss(dt);
     updateSpawns(dt);
     updateHealSpawns(dt);
     updateRunChestSpawns(dt);
-    updateRunItems(dt);
     updateEnemies(dt);
+    rebuildEnemyGrid();
+    autoAttack();
+    updateRunItems(dt);
     updateDrops(dt);
     updateProjectiles(dt);
     updateBossProjectiles(dt);
@@ -626,9 +688,8 @@
   }
 
   function updateMouseWorld() {
-    const rect = canvas.getBoundingClientRect();
-    mouse.worldX = mouse.x - rect.left + camera.x;
-    mouse.worldY = mouse.y - rect.top + camera.y;
+    mouse.worldX = mouse.x - viewport.left + camera.x;
+    mouse.worldY = mouse.y - viewport.top + camera.y;
     player.angle = Math.atan2(mouse.worldY - player.y, mouse.worldX - player.x);
   }
 
@@ -678,7 +739,7 @@
       footballContactTimer: 0,
       angle: 0,
     };
-    numbers.push({ x: boss.x, y: boss.y - boss.r - 28, text: `${boss.name} appears`, color: "#d5a43a", life: 1.4 });
+    pushNumber({ x: boss.x, y: boss.y - boss.r - 28, text: `${boss.name} appears`, color: "#d5a43a", life: 1.4 });
     burst(boss.x, boss.y, "#d5a43a", 42);
     maintainBossMinions();
   }
@@ -768,7 +829,10 @@
   }
 
   function maintainBossMinions() {
-    const active = enemies.filter((enemy) => enemy.bossMinion).length;
+    let active = 0;
+    for (const enemy of enemies) {
+      if (enemy.bossMinion) active++;
+    }
     for (let i = active; i < 5; i++) spawnBossMinion();
   }
 
@@ -792,7 +856,7 @@
     if (!boss) return;
     boss.hp -= amount;
     boss.hitTimer = 0.14;
-    numbers.push({ x: x || boss.x, y: (y || boss.y) - boss.r - 18, text: String(amount), color: "#f1ead7", life: 0.66 });
+    pushNumber({ x: x || boss.x, y: (y || boss.y) - boss.r - 18, text: String(amount), color: "#f1ead7", life: 0.66 });
     burst(x || boss.x, y || boss.y, "#d5a43a", 10);
     if (boss.hp <= 0) defeatBoss();
   }
@@ -807,7 +871,7 @@
       life: 0,
       collected: false,
     });
-    numbers.push({ x: defeated.x, y: defeated.y - defeated.r - 36, text: `${defeated.name} defeated`, color: "#d5a43a", life: 1.35 });
+    pushNumber({ x: defeated.x, y: defeated.y - defeated.r - 36, text: `${defeated.name} defeated`, color: "#d5a43a", life: 1.35 });
     burst(defeated.x, defeated.y, "#d5a43a", 60);
     boss = undefined;
     bossProjectiles = [];
@@ -874,7 +938,7 @@
     } else {
       boostChests.push(chest);
     }
-    numbers.push({
+    pushNumber({
       x: chest.x,
       y: chest.y - 28,
       text: type === "item" ? "Item chest" : "Boost chest",
@@ -966,14 +1030,13 @@
   function damageFootballTouches(ball) {
     const radius = 52;
     const damage = abilityDamage("football", 0.3);
-    for (let i = enemies.length - 1; i >= 0; i--) {
-      const enemy = enemies[i];
-      if (enemy.footballContactTimer > 0) continue;
-      if (Math.hypot(enemy.x - ball.x, enemy.y - ball.y) > enemy.r + radius) continue;
+    forEachNearbyEnemy(ball.x, ball.y, radius + 36, (enemy) => {
+      if (enemy.footballContactTimer > 0) return;
+      if (!circlesOverlap(enemy.x, enemy.y, enemy.r, ball.x, ball.y, radius)) return;
       enemy.footballContactTimer = 0.32;
-      damageEnemyAt(i, damage, ball.x, ball.y, "#f1ead7");
-    }
-    if (boss && boss.footballContactTimer <= 0 && Math.hypot(boss.x - ball.x, boss.y - ball.y) <= boss.r + radius) {
+      damageEnemy(enemy, damage, ball.x, ball.y, "#f1ead7");
+    });
+    if (boss && boss.footballContactTimer <= 0 && circlesOverlap(boss.x, boss.y, boss.r, ball.x, ball.y, radius)) {
       boss.footballContactTimer = 0.32;
       damageBoss(damage, ball.x, ball.y);
     }
@@ -1007,24 +1070,26 @@
   }
 
   function damageEnemiesInRadius(x, y, radius, amount, color) {
-    for (let i = enemies.length - 1; i >= 0; i--) {
-      const enemy = enemies[i];
-      if (Math.hypot(enemy.x - x, enemy.y - y) > enemy.r + radius) continue;
-      damageEnemyAt(i, amount, enemy.x, enemy.y, color);
-    }
-    if (boss && Math.hypot(boss.x - x, boss.y - y) <= boss.r + radius) {
+    forEachNearbyEnemy(x, y, radius + 40, (enemy) => {
+      if (!circlesOverlap(enemy.x, enemy.y, enemy.r, x, y, radius)) return;
+      damageEnemy(enemy, amount, enemy.x, enemy.y, color);
+    });
+    if (boss && circlesOverlap(boss.x, boss.y, boss.r, x, y, radius)) {
       damageBoss(amount, x, y);
     }
   }
 
-  function damageEnemyAt(index, amount, x, y, color) {
-    const enemy = enemies[index];
-    if (!enemy) return;
+  function damageEnemy(enemy, amount, x, y, color) {
+    if (!enemy || enemy.dead) return;
     enemy.hp -= amount;
     enemy.hitTimer = 0.12;
-    numbers.push({ x: x || enemy.x, y: (y || enemy.y) - 28, text: String(amount), color, life: 0.62 });
+    pushNumber({ x: x || enemy.x, y: (y || enemy.y) - 28, text: String(amount), color, life: 0.62 });
     burst(x || enemy.x, y || enemy.y, color, 7);
-    if (enemy.hp <= 0) killEnemy(index);
+    if (enemy.hp <= 0) killEnemyByRef(enemy);
+  }
+
+  function damageEnemyAt(index, amount, x, y, color) {
+    damageEnemy(enemies[index], amount, x, y, color);
   }
 
   function updateDrops(dt) {
@@ -1034,13 +1099,13 @@
     for (let i = treasureChests.length - 1; i >= 0; i--) {
       const chest = treasureChests[i];
       chest.life += dt;
-      if (!chest.collected && Math.hypot(player.x - chest.x, player.y - chest.y) < player.r + 34) {
+      if (!chest.collected && circlesOverlap(player.x, player.y, player.r, chest.x, chest.y, 34)) {
         chest.collected = true;
         const healed = Math.ceil(player.maxHp * 0.5);
         player.runGold += chest.value;
         player.hp += healed;
-        numbers.push({ x: chest.x, y: chest.y - 34, text: `+${chest.value} gold`, color: "#d5a43a", life: 1.1 });
-        numbers.push({ x: chest.x, y: chest.y - 58, text: `+${healed} HP`, color: "#9bd27b", life: 1.1 });
+        pushNumber({ x: chest.x, y: chest.y - 34, text: `+${chest.value} gold`, color: "#d5a43a", life: 1.1 });
+        pushNumber({ x: chest.x, y: chest.y - 58, text: `+${healed} HP`, color: "#9bd27b", life: 1.1 });
         burst(chest.x, chest.y, "#d5a43a", 36);
         burst(chest.x, chest.y, "#7fb069", 18);
         treasureChests.splice(i, 1);
@@ -1050,10 +1115,10 @@
     for (let i = goldDrops.length - 1; i >= 0; i--) {
       const drop = goldDrops[i];
       drop.life += dt;
-      if (Math.hypot(player.x - drop.x, player.y - drop.y) < player.r + 18) {
+      if (circlesOverlap(player.x, player.y, player.r, drop.x, drop.y, 18)) {
         player.runGold += drop.value;
         burst(drop.x, drop.y, "#d5a43a", 10);
-        numbers.push({ x: drop.x, y: drop.y - 20, text: `+${drop.value}`, color: "#d5a43a", life: 0.8 });
+        pushNumber({ x: drop.x, y: drop.y - 20, text: `+${drop.value}`, color: "#d5a43a", life: 0.8 });
         goldDrops.splice(i, 1);
       }
     }
@@ -1061,11 +1126,11 @@
     for (let i = healDrops.length - 1; i >= 0; i--) {
       const drop = healDrops[i];
       drop.life += dt;
-      if (Math.hypot(player.x - drop.x, player.y - drop.y) < player.r + 20) {
+      if (circlesOverlap(player.x, player.y, player.r, drop.x, drop.y, 20)) {
         const healed = drop.amount;
         player.hp += healed;
         burst(drop.x, drop.y, "#7fb069", 14);
-        numbers.push({ x: drop.x, y: drop.y - 20, text: `+${healed} HP`, color: "#9bd27b", life: 0.9 });
+        pushNumber({ x: drop.x, y: drop.y - 20, text: `+${healed} HP`, color: "#9bd27b", life: 0.9 });
         healDrops.splice(i, 1);
       }
     }
@@ -1075,7 +1140,7 @@
     for (let i = chests.length - 1; i >= 0; i--) {
       const chest = chests[i];
       chest.life += dt;
-      if (!chest.collected && Math.hypot(player.x - chest.x, player.y - chest.y) < player.r + 34) {
+      if (!chest.collected && circlesOverlap(player.x, player.y, player.r, chest.x, chest.y, 34)) {
         chest.collected = true;
         opener(chest);
         chests.splice(i, 1);
@@ -1089,7 +1154,7 @@
     if (!missing.length) {
       const gold = duplicateItemGold(item.rarity);
       player.runGold += gold;
-      numbers.push({ x: chest.x, y: chest.y - 34, text: `${item.rarity}: +${gold} gold`, color: item.color, life: 1.35 });
+      pushNumber({ x: chest.x, y: chest.y - 34, text: `${item.rarity}: +${gold} gold`, color: item.color, life: 1.35 });
       burst(chest.x, chest.y, item.color, item.rarity === "Legendary" ? 50 : 30);
       return;
     }
@@ -1097,7 +1162,7 @@
     if (item.id === "football") player.itemTimers.football = 0;
     if (item.id === "bike") player.itemTimers.bike = Math.min(player.itemTimers.bike, 0.35);
     if (item.id === "pigeon") player.itemTimers.pigeon = Math.min(player.itemTimers.pigeon, 0.35);
-    numbers.push({ x: chest.x, y: chest.y - 34, text: `${item.rarity}: ${item.name}`, color: item.color, life: 1.35 });
+    pushNumber({ x: chest.x, y: chest.y - 34, text: `${item.rarity}: ${item.name}`, color: item.color, life: 1.35 });
     burst(chest.x, chest.y, item.color, item.rarity === "Legendary" ? 50 : 30);
   }
 
@@ -1111,8 +1176,9 @@
   function openBoostChest(chest) {
     const boost = boostPool[Math.floor(Math.random() * boostPool.length)];
     boost.apply(player);
-    refreshRunStats();
-    numbers.push({ x: chest.x, y: chest.y - 34, text: boost.name, color: boost.color, life: 1.2 });
+    markRunStatsDirty();
+    refreshRunStatsIfNeeded();
+    pushNumber({ x: chest.x, y: chest.y - 34, text: boost.name, color: boost.color, life: 1.2 });
     burst(chest.x, chest.y, boost.color, 26);
   }
 
@@ -1154,21 +1220,19 @@
       projectile.life -= dt;
 
       let hit = false;
-      for (let enemyIndex = enemies.length - 1; enemyIndex >= 0; enemyIndex--) {
-        const enemy = enemies[enemyIndex];
-        if (projectile.hitEnemyIds.has(enemy.id)) continue;
-        if (Math.hypot(projectile.x - enemy.x, projectile.y - enemy.y) > projectile.r + enemy.r) continue;
+      forEachNearbyEnemy(projectile.x, projectile.y, projectile.r + 48, (enemy) => {
+        if (hit || projectile.hitEnemyIds.has(enemy.id)) return;
+        if (!circleHit(projectile, enemy)) return;
 
         projectile.hitEnemyIds.add(enemy.id);
-        damageEnemyAt(enemyIndex, projectile.damage, projectile.x, projectile.y, projectileColor(projectile));
+        damageEnemy(enemy, projectile.damage, projectile.x, projectile.y, projectileColor(projectile));
         projectile.pierceLeft--;
         if (projectile.pierceLeft < 0) {
           hit = true;
-          break;
         }
-      }
+      });
 
-      if (!hit && boss && !projectile.hitBoss && Math.hypot(projectile.x - boss.x, projectile.y - boss.y) <= projectile.r + boss.r) {
+      if (!hit && boss && !projectile.hitBoss && circleHit(projectile, boss)) {
         projectile.hitBoss = true;
         damageBoss(projectile.damage, projectile.x, projectile.y);
         hit = true;
@@ -1200,32 +1264,28 @@
     slashes.push(slash);
     state.shake = Math.max(state.shake, strong ? 5 : 3);
 
-    for (const enemy of enemies) {
+    forEachNearbyEnemy(player.x, player.y, reach + 50, (enemy) => {
       const dx = enemy.x - player.x;
       const dy = enemy.y - player.y;
-      const dist = Math.hypot(dx, dy);
+      const maxReach = reach + enemy.r;
+      if (distanceSq(dx, dy) >= maxReach * maxReach) return;
       const angle = Math.atan2(dy, dx);
       const diff = Math.abs(wrapAngle(angle - player.angle));
-      if (dist < reach + enemy.r && diff < width) {
-        enemy.hp -= damage;
-        enemy.hitTimer = 0.12;
-        numbers.push({ x: enemy.x, y: enemy.y - 28, text: String(damage), color: strong ? "#d5a43a" : "#f1ead7", life: 0.62 });
-        burst(enemy.x, enemy.y, strong ? "#d5a43a" : "#9f3f36", strong ? 14 : 8);
+      if (diff < width) {
+        damageEnemy(enemy, damage, enemy.x, enemy.y, strong ? "#d5a43a" : "#f1ead7");
       }
-    }
-
-    for (let i = enemies.length - 1; i >= 0; i--) {
-      if (enemies[i].hp <= 0) killEnemy(i);
-    }
+    });
 
     if (boss) {
       const dx = boss.x - player.x;
       const dy = boss.y - player.y;
-      const dist = Math.hypot(dx, dy);
-      const angle = Math.atan2(dy, dx);
-      const diff = Math.abs(wrapAngle(angle - player.angle));
-      if (dist < boss.r + reach && diff < width + 0.1) {
-        damageBoss(damage, boss.x, boss.y);
+      const maxReach = boss.r + reach;
+      if (distanceSq(dx, dy) < maxReach * maxReach) {
+        const angle = Math.atan2(dy, dx);
+        const diff = Math.abs(wrapAngle(angle - player.angle));
+        if (diff < width + 0.1) {
+          damageBoss(damage, boss.x, boss.y);
+        }
       }
     }
     return true;
@@ -1294,13 +1354,15 @@
 
   function killEnemy(index) {
     const enemy = enemies[index];
+    if (!enemy || enemy.dead) return;
+    enemy.dead = true;
     player.kills++;
     gainXP(1);
     if (player.character === "character3") {
       // Vampire Jaylub lifesteal is tied to confirmed kills here to avoid duplicate healing.
       const healed = 1 + Math.floor(Math.random() * 2);
       player.hp += healed;
-      numbers.push({ x: player.x, y: player.y - 46, text: `+${healed} HP`, color: "#9bd27b", life: 0.72 });
+      pushNumber({ x: player.x, y: player.y - 46, text: `+${healed} HP`, color: "#9bd27b", life: 0.72 });
       burst(player.x, player.y, "#9bd27b", 6);
     }
     const goldChance = enemy.type === "elite" ? 0.82 : 0.58;
@@ -1308,8 +1370,15 @@
       const value = enemy.type === "elite" ? 4 + Math.floor(Math.random() * 5) : 1 + Math.floor(Math.random() * 4);
       goldDrops.push({ x: enemy.x, y: enemy.y, value, life: 0 });
     }
-    burst(enemy.x, enemy.y, enemy.type === "elite" ? "#9f5f3a" : "#6f7356", enemy.type === "elite" ? 28 : 18);
-    enemies.splice(index, 1);
+    burst(enemy.x, enemy.y, enemy.type === "elite" ? "#9f5f3a" : "#6f7356", enemy.type === "elite" ? 20 : 12);
+    const last = enemies.length - 1;
+    if (index !== last) enemies[index] = enemies[last];
+    enemies.pop();
+  }
+
+  function killEnemyByRef(enemy) {
+    const index = enemies.indexOf(enemy);
+    if (index !== -1) killEnemy(index);
   }
 
   function gainXP(amount) {
@@ -1319,9 +1388,10 @@
       player.level++;
       const reward = levelReward(player.level);
       reward.apply(player);
-      refreshRunStats();
+      markRunStatsDirty();
+      refreshRunStatsIfNeeded();
       player.nextLevelXP = levelRequirement(player.level + 1);
-      numbers.push({ x: player.x, y: player.y - 58, text: `Level ${player.level}: ${reward.text}`, color: "#d5a43a", life: 1.4 });
+      pushNumber({ x: player.x, y: player.y - 58, text: `Level ${player.level}: ${reward.text}`, color: "#d5a43a", life: 1.4 });
       burst(player.x, player.y, "#d5a43a", 32);
     }
   }
@@ -1332,7 +1402,7 @@
     player.invuln = 0.45;
     state.hitPause = 0.035;
     state.shake = 12;
-    numbers.push({ x: player.x, y: player.y - 34, text: `-${Math.ceil(amount)}`, color: "#d95b4d", life: 0.75 });
+    pushNumber({ x: player.x, y: player.y - 34, text: `-${Math.ceil(amount)}`, color: "#d95b4d", life: 0.75 });
     burst(player.x, player.y, "#d95b4d", 12);
   }
 
@@ -1352,6 +1422,8 @@
     state.pausedAt = performance.now();
     keys.clear();
     showScreen("pause");
+    draw();
+    stopGameLoop();
   }
 
   function resumeRun() {
@@ -1361,9 +1433,11 @@
     state.pausedAt = 0;
     state.lastTime = performance.now();
     showScreen("game");
+    startGameLoop();
   }
 
   function quitRun() {
+    stopGameLoop();
     state.running = false;
     state.paused = false;
     state.pausedAt = 0;
@@ -1392,6 +1466,7 @@
   }
 
   async function endRun() {
+    stopGameLoop();
     state.running = false;
     ui.finalTime.textContent = formatTime(player.survivalSeconds);
     ui.finalKills.textContent = player.kills;
@@ -1430,50 +1505,32 @@
 
     drawWorld();
     if (player) drawAura();
-    for (const drop of goldDrops) drawGold(drop);
-    for (const drop of healDrops) drawHeal(drop);
-    for (const chest of treasureChests) drawTreasure(chest);
-    for (const chest of itemChests) drawRunChest(chest);
-    for (const chest of boostChests) drawRunChest(chest);
-    for (const enemy of enemies) drawEnemy(enemy);
-    if (boss) drawBoss();
-    for (const projectile of bossProjectiles) drawBossProjectile(projectile);
+    for (const drop of goldDrops) if (isCircleVisible(drop.x, drop.y, 24)) drawGold(drop);
+    for (const drop of healDrops) if (isCircleVisible(drop.x, drop.y, 28)) drawHeal(drop);
+    for (const chest of treasureChests) if (isCircleVisible(chest.x, chest.y, 38)) drawTreasure(chest);
+    for (const chest of itemChests) if (isCircleVisible(chest.x, chest.y, 36)) drawRunChest(chest);
+    for (const chest of boostChests) if (isCircleVisible(chest.x, chest.y, 36)) drawRunChest(chest);
+    for (const enemy of enemies) if (isCircleVisible(enemy.x, enemy.y, enemy.size || enemy.r * 2)) drawEnemy(enemy);
+    if (boss && isCircleVisible(boss.x, boss.y, boss.size)) drawBoss();
+    for (const projectile of bossProjectiles) if (isCircleVisible(projectile.x, projectile.y, 32)) drawBossProjectile(projectile);
     if (player) {
       drawPlayer();
       drawFootball();
-      for (const slash of slashes) drawSlash(slash);
-      for (const projectile of projectiles) drawProjectile(projectile);
+      for (const slash of slashes) if (isCircleVisible(slash.x, slash.y, slash.reach || 105)) drawSlash(slash);
+      for (const projectile of projectiles) if (isCircleVisible(projectile.x, projectile.y, 42)) drawProjectile(projectile);
     }
-    for (const p of particles) drawParticle(p);
-    for (const n of numbers) drawNumber(n);
+    for (const p of particles) if (isCircleVisible(p.x, p.y, p.size || 4, 24)) drawParticle(p);
+    drawNumbers();
 
     ctx.restore();
   }
 
   function drawWorld() {
-    ctx.fillStyle = "#303028";
-    ctx.fillRect(0, 0, world.width, world.height);
-
-    const tile = 64;
-    for (let y = 0; y < world.height; y += tile) {
-      for (let x = 0; x < world.width; x += tile) {
-        ctx.fillStyle = ((x / tile + y / tile) % 2 === 0) ? "#34332a" : "#2c302b";
-        ctx.fillRect(x, y, tile, tile);
-      }
-    }
-
-    ctx.strokeStyle = "#4b4538";
-    ctx.lineWidth = 6;
-    ctx.strokeRect(12, 12, world.width - 24, world.height - 24);
-
-    for (const d of rngDetails) {
-      ctx.fillStyle = d.color;
-      ctx.fillRect(d.x, d.y, d.w, d.h);
-      if (d.mark) {
-        ctx.fillStyle = "rgba(10, 13, 14, 0.28)";
-        ctx.fillRect(d.x + 4, d.y + 4, Math.max(4, d.w - 8), 4);
-      }
-    }
+    const sx = Math.floor(camera.x);
+    const sy = Math.floor(camera.y);
+    const sw = Math.min(worldCanvas.width - sx, Math.ceil(viewWidth()) + 2);
+    const sh = Math.min(worldCanvas.height - sy, Math.ceil(viewHeight()) + 2);
+    ctx.drawImage(worldCanvas, sx, sy, sw, sh, sx, sy, sw, sh);
   }
 
   function drawPlayer() {
@@ -1666,7 +1723,8 @@
 
   function drawAura() {
     if (!player || player.runItems.aura <= 0) return;
-    const pulse = 0.82 + Math.sin(performance.now() / 180) * 0.12;
+    const now = performance.now();
+    const pulse = 0.82 + Math.sin(now / 180) * 0.12;
     ctx.save();
     ctx.globalAlpha = 0.22;
     ctx.fillStyle = "#7fb069";
@@ -1675,7 +1733,7 @@
     ctx.fill();
     ctx.globalAlpha = 0.36;
     for (let i = 0; i < 10; i++) {
-      const angle = i * 0.9 + performance.now() / 620;
+      const angle = i * 0.9 + now / 620;
       const radius = 54 + (i % 4) * 24;
       ctx.fillRect(
         Math.round(player.x + Math.cos(angle) * radius),
@@ -1717,35 +1775,61 @@
     ctx.globalAlpha = 1;
   }
 
-  function drawNumber(n) {
-    ctx.globalAlpha = Math.max(0, n.life);
-    ctx.fillStyle = "#0a0d0e";
+  function drawNumbers() {
+    if (!numbers.length) return;
     ctx.font = "900 18px 'Courier New', monospace";
-    ctx.fillText(n.text, Math.round(n.x + 2), Math.round(n.y + 2));
-    ctx.fillStyle = n.color;
-    ctx.fillText(n.text, Math.round(n.x), Math.round(n.y));
+    for (const n of numbers) {
+      if (!isCircleVisible(n.x, n.y, 80, 24)) continue;
+      const alpha = Math.max(0, n.life);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = "#0a0d0e";
+      ctx.fillText(n.text, Math.round(n.x + 2), Math.round(n.y + 2));
+      ctx.fillStyle = n.color;
+      ctx.fillText(n.text, Math.round(n.x), Math.round(n.y));
+    }
     ctx.globalAlpha = 1;
   }
 
   function updateHud() {
-    ui.hpFill.style.width = `${clamp(player.hp / player.maxHp, 0, 1) * 100}%`;
-    ui.hpText.textContent = `${Math.max(0, Math.ceil(player.hp))} / ${player.maxHp}`;
-    ui.runGold.textContent = player.runGold;
-    ui.runKills.textContent = player.kills;
-    if (ui.runLevel) ui.runLevel.textContent = player.level;
-    if (ui.xpFill) ui.xpFill.style.width = `${clamp(player.xp / player.nextLevelXP, 0, 1) * 100}%`;
-    if (ui.xpText) ui.xpText.textContent = `${player.xp} / ${player.nextLevelXP} XP`;
-    ui.runTime.textContent = formatTime(player.survivalSeconds);
-    if (ui.bossPanel) {
-      ui.bossPanel.hidden = !boss;
-      if (boss) {
-        ui.bossFill.style.width = `${clamp(boss.hp / boss.maxHp, 0, 1) * 100}%`;
-        ui.bossText.textContent = `${boss.name} ${Math.max(0, Math.ceil(boss.hp))} / ${boss.maxHp}`;
-      }
+    setCachedStyle(ui.hpFill, "hpWidth", `${clamp(player.hp / player.maxHp, 0, 1) * 100}%`, "width");
+    setCachedText(ui.hpText, "hpText", `${Math.max(0, Math.ceil(player.hp))} / ${player.maxHp}`);
+    setCachedText(ui.runGold, "gold", player.runGold);
+    setCachedText(ui.runKills, "kills", player.kills);
+    setCachedText(ui.runLevel, "level", player.level);
+    setCachedStyle(ui.xpFill, "xpWidth", `${clamp(player.xp / player.nextLevelXP, 0, 1) * 100}%`, "width");
+    setCachedText(ui.xpText, "xpText", `${player.xp} / ${player.nextLevelXP} XP`);
+    setCachedText(ui.runTime, "time", formatTime(player.survivalSeconds));
+
+    if (!ui.bossPanel) return;
+    const bossVisible = Boolean(boss);
+    if (hudCache.bossVisible !== bossVisible) {
+      hudCache.bossVisible = bossVisible;
+      ui.bossPanel.hidden = !bossVisible;
+    }
+    if (boss) {
+      setCachedStyle(ui.bossFill, "bossWidth", `${clamp(boss.hp / boss.maxHp, 0, 1) * 100}%`, "width");
+      setCachedText(ui.bossText, "bossText", `${boss.name} ${Math.max(0, Math.ceil(boss.hp))} / ${boss.maxHp}`);
     }
   }
 
+  function setCachedText(element, key, value) {
+    if (!element) return;
+    const next = String(value);
+    if (hudCache[key] === next) return;
+    hudCache[key] = next;
+    element.textContent = next;
+  }
+
+  function setCachedStyle(element, key, value, property) {
+    if (!element || hudCache[key] === value) return;
+    hudCache[key] = value;
+    element.style[property] = value;
+  }
+
   function burst(x, y, color, count) {
+    count = Math.min(count, perf.maxParticles);
+    const overflow = particles.length + count - perf.maxParticles;
+    if (overflow > 0) particles.splice(0, overflow);
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = 40 + Math.random() * 150;
@@ -1779,8 +1863,102 @@
     return details;
   }
 
+  function makeWorldCanvas() {
+    const buffer = document.createElement("canvas");
+    buffer.width = world.width;
+    buffer.height = world.height;
+    const bufferCtx = buffer.getContext("2d");
+    bufferCtx.imageSmoothingEnabled = false;
+    bufferCtx.fillStyle = "#303028";
+    bufferCtx.fillRect(0, 0, world.width, world.height);
+
+    const tile = 64;
+    for (let y = 0; y < world.height; y += tile) {
+      for (let x = 0; x < world.width; x += tile) {
+        bufferCtx.fillStyle = ((x / tile + y / tile) % 2 === 0) ? "#34332a" : "#2c302b";
+        bufferCtx.fillRect(x, y, tile, tile);
+      }
+    }
+
+    bufferCtx.strokeStyle = "#4b4538";
+    bufferCtx.lineWidth = 6;
+    bufferCtx.strokeRect(12, 12, world.width - 24, world.height - 24);
+
+    for (const d of rngDetails) {
+      bufferCtx.fillStyle = d.color;
+      bufferCtx.fillRect(d.x, d.y, d.w, d.h);
+      if (d.mark) {
+        bufferCtx.fillStyle = "rgba(10, 13, 14, 0.28)";
+        bufferCtx.fillRect(d.x + 4, d.y + 4, Math.max(4, d.w - 8), 4);
+      }
+    }
+    return buffer;
+  }
+
+  function rebuildEnemyGrid() {
+    for (const bucket of enemyGrid.values()) {
+      bucket.length = 0;
+    }
+    for (const enemy of enemies) {
+      if (enemy.dead) continue;
+      const key = gridKey(enemy.x, enemy.y);
+      let bucket = enemyGrid.get(key);
+      if (!bucket) {
+        bucket = [];
+        enemyGrid.set(key, bucket);
+      }
+      bucket.push(enemy);
+    }
+  }
+
+  function forEachNearbyEnemy(x, y, radius, callback) {
+    const size = perf.enemyCellSize;
+    const minX = Math.floor((x - radius) / size);
+    const maxX = Math.floor((x + radius) / size);
+    const minY = Math.floor((y - radius) / size);
+    const maxY = Math.floor((y + radius) / size);
+    for (let gy = minY; gy <= maxY; gy++) {
+      for (let gx = minX; gx <= maxX; gx++) {
+        const bucket = enemyGrid.get(`${gx}:${gy}`);
+        if (!bucket) continue;
+        for (const enemy of bucket) {
+          if (!enemy.dead) callback(enemy);
+        }
+      }
+    }
+  }
+
+  function gridKey(x, y) {
+    return `${Math.floor(x / perf.enemyCellSize)}:${Math.floor(y / perf.enemyCellSize)}`;
+  }
+
+  function pushNumber(number) {
+    if (numbers.length >= perf.maxNumbers) numbers.shift();
+    numbers.push(number);
+  }
+
   function circleHit(a, b) {
-    return Math.hypot(a.x - b.x, a.y - b.y) < a.r + b.r;
+    return circlesOverlap(a.x, a.y, a.r, b.x, b.y, b.r);
+  }
+
+  function circlesOverlap(ax, ay, ar, bx, by, br) {
+    const dx = ax - bx;
+    const dy = ay - by;
+    const r = ar + br;
+    return distanceSq(dx, dy) < r * r;
+  }
+
+  function distanceSq(dx, dy) {
+    return dx * dx + dy * dy;
+  }
+
+  function isCircleVisible(x, y, radius, extraPadding = perf.drawPadding) {
+    return (
+      x + radius >= camera.x - extraPadding &&
+      y + radius >= camera.y - extraPadding &&
+      x - radius <= camera.x + viewWidth() + extraPadding &&
+      y - radius <= camera.y + viewHeight() + extraPadding
+    );
   }
 
   function clamp(value, min, max) {
@@ -1814,12 +1992,36 @@
     });
   }
 
+  function wantsGameLoop() {
+    return state.running && document.visibilityState !== "hidden";
+  }
+
+  function startGameLoop() {
+    if (loopActive || !wantsGameLoop()) return;
+    loopActive = true;
+    state.lastTime = performance.now();
+    loopHandle = requestAnimationFrame(loop);
+  }
+
+  function stopGameLoop() {
+    loopActive = false;
+    if (loopHandle) {
+      cancelAnimationFrame(loopHandle);
+      loopHandle = 0;
+    }
+  }
+
   function loop(now) {
+    if (!loopActive || !wantsGameLoop()) {
+      stopGameLoop();
+      return;
+    }
+
     const dt = Math.min(0.033, (now - state.lastTime) / 1000);
     state.lastTime = now;
     update(dt);
     draw();
-    requestAnimationFrame(loop);
+    loopHandle = requestAnimationFrame(loop);
   }
 
   document.getElementById("playButton").addEventListener("click", startRun);
@@ -1836,7 +2038,7 @@
     renderShop();
     showScreen("shop");
   });
-  document.querySelectorAll("[data-shop-category]").forEach((button) => {
+  shopCategoryButtons.forEach((button) => {
     button.addEventListener("click", () => {
       state.shopCategory = button.dataset.shopCategory || "stats";
       renderShop();
@@ -1847,10 +2049,10 @@
     showScreen("leaderboard");
     loadLeaderboard();
   });
-  document.querySelectorAll("[data-leaderboard-sort]").forEach((button) => {
+  leaderboardSortButtons.forEach((button) => {
     button.addEventListener("click", () => loadLeaderboard(button.dataset.leaderboardSort));
   });
-  document.querySelectorAll("[data-menu-back]").forEach((button) => {
+  menuBackButtons.forEach((button) => {
     button.addEventListener("click", () => showScreen("menu"));
   });
 
@@ -1871,15 +2073,19 @@
     mouse.x = event.clientX;
     mouse.y = event.clientY;
   });
+  window.addEventListener("scroll", updateCanvasBounds, { passive: true });
   window.addEventListener("resize", resizeCanvas);
   document.addEventListener("fullscreenchange", () => {
     updateFullscreenButton();
     resizeCanvas();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (wantsGameLoop()) startGameLoop();
+    else stopGameLoop();
   });
 
   resizeCanvas();
   updateFullscreenButton();
   showScreen("menu");
   loadState().catch(() => {});
-  requestAnimationFrame(loop);
 })();

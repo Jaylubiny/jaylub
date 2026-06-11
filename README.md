@@ -30,3 +30,7 @@ WORKING ON ^
 DONE ^
 
 add bioms and maps with stronger or weaker emeies (and in future custom enemies for every biom)
+
+optimize the fuck out of this
+
+bulvy jaylub that shoots 2 lazers
