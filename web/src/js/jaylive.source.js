@@ -67,6 +67,7 @@
     { name: "Boss 2", hp: 1500, reward: 500, imageIndex: 1, r: 80, size: 168, speed: 62, cooldown: 1.35, shotSpeed: 260, damage: 18, burstShots: 14 },
     { name: "Boss 3", hp: 3000, reward: 1000, imageIndex: 2, r: 94, size: 198, speed: 70, cooldown: 1.05, shotSpeed: 290, damage: 24, burstShots: 16 },
   ];
+  const bossSpawnGraceSeconds = 90;
   const itemPool = [
     { id: "aura", name: "Aura", rarity: "Common", weight: 55, color: "#7fb069" },
     { id: "football", name: "Football", rarity: "Rare", weight: 25, color: "#f1ead7" },
@@ -499,7 +500,7 @@
         pigeon: 5,
         footballAngle: 0,
       },
-      startedAt: performance.now(),
+      survivalTime: 0,
       survivalSeconds: 0,
     };
     enemies = [];
@@ -658,7 +659,8 @@
       return;
     }
 
-    player.survivalSeconds = Math.floor((performance.now() - player.startedAt) / 1000);
+    player.survivalTime += dt;
+    player.survivalSeconds = Math.floor(player.survivalTime);
     player.attackTimer -= dt;
     player.invuln = Math.max(0, player.invuln - dt);
     state.shake = Math.max(0, state.shake - dt * 28);
@@ -735,6 +737,7 @@
       attackTimer: 1.2,
       patternIndex: 0,
       minionTimer: 0,
+      elapsed: 0,
       hitTimer: 0,
       footballContactTimer: 0,
       angle: 0,
@@ -747,6 +750,7 @@
   function updateBoss(dt) {
     if (!boss) return;
 
+    boss.elapsed += dt;
     const dx = player.x - boss.x;
     const dy = player.y - boss.y;
     const dist = Math.hypot(dx, dy) || 1;
@@ -881,9 +885,12 @@
   }
 
   function updateSpawns(dt) {
-    if (boss) return;
-    state.spawnPauseTimer = Math.max(0, state.spawnPauseTimer - dt);
-    if (state.spawnPauseTimer > 0) return;
+    if (boss) {
+      if (boss.elapsed < bossSpawnGraceSeconds) return;
+    } else {
+      state.spawnPauseTimer = Math.max(0, state.spawnPauseTimer - dt);
+      if (state.spawnPauseTimer > 0) return;
+    }
 
     const d = difficulty();
     state.spawnTimer -= dt;
@@ -1428,7 +1435,6 @@
 
   function resumeRun() {
     if (!state.running || !state.paused || !player) return;
-    player.startedAt += performance.now() - state.pausedAt;
     state.paused = false;
     state.pausedAt = 0;
     state.lastTime = performance.now();
@@ -1808,8 +1814,15 @@
     }
     if (boss) {
       setCachedStyle(ui.bossFill, "bossWidth", `${clamp(boss.hp / boss.maxHp, 0, 1) * 100}%`, "width");
-      setCachedText(ui.bossText, "bossText", `${boss.name} ${Math.max(0, Math.ceil(boss.hp))} / ${boss.maxHp}`);
+      setCachedText(ui.bossText, "bossText", `${boss.name} ${Math.max(0, Math.ceil(boss.hp))} / ${boss.maxHp} - ${bossPressureText()}`);
     }
+  }
+
+  function bossPressureText() {
+    if (!boss) return "";
+    const remaining = Math.ceil(bossSpawnGraceSeconds - boss.elapsed);
+    if (remaining <= 0) return "Enemies spawning";
+    return `Enemies in ${formatTime(remaining)}`;
   }
 
   function setCachedText(element, key, value) {

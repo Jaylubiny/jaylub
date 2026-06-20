@@ -223,21 +223,16 @@ func (s *Service) addColumnIfMissing(table, column, definition string) error {
 }
 
 func (s *Service) ensureExampleUser() error {
-	var exists bool
-	err := s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM users WHERE username = ?)`, "preclik").Scan(&exists)
-	if err != nil {
-		return err
-	}
-	if exists {
-		return nil
-	}
-
-	hash, err := bcrypt.GenerateFromPassword([]byte("jaykluk"), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte("preclik"), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
 
-	_, err = s.db.Exec(`INSERT INTO users (username, password_hash) VALUES (?, ?)`, "preclik", string(hash))
+	_, err = s.db.Exec(`
+		INSERT INTO users (username, password_hash)
+		VALUES (?, ?)
+		ON CONFLICT(username) DO UPDATE SET password_hash = excluded.password_hash
+	`, "preclik", string(hash))
 	return err
 }
 
