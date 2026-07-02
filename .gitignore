@@ -2,6 +2,7 @@
 *.pem
 *.key
 *.json
+*.bak
 cloudflared/
 node_modules/
 
@@ -20,3 +21,8 @@ instance/
 
 # Logs
 *.log
+*.pid
+
+# Binaries
+admin
+

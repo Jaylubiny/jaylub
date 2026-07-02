@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# --- LOAD ENVIRONMENT VARIABLES ---
+if [ -f internal/database/.env ]; then
+    echo "Loading environment variables from internal/database/.env..."
+    # Export vars, ignoring comment lines
+    export $(grep -v '^#' internal/database/.env | xargs)
+fi
+# ----------------------------------
+
 BIN_DIR=".bin"
 BIN_PATH="$BIN_DIR/jaylub-server"
 PID_FILE="server.pid"
