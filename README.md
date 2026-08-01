@@ -52,3 +52,5 @@ add bioms and maps with stronger or weaker emeies (and in future custom enemies 
 optimize the fuck out of this
 
 bulvy jaylub that shoots 2 lazers
+
+better chat experience and more secure chat
