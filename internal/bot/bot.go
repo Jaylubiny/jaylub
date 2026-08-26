@@ -246,7 +246,7 @@ type lolEsportsSchedule struct {
 		Schedule struct {
 			Events []struct {
 				StartTime string `json:"startTime"`
-				State     string `json:"state"` // "inProgress", "unstarted"
+				State     string `json:"state"` // "inProgress", "unstarted", "completed"
 				Type      string `json:"type"`  // "match"
 				League    struct {
 					Name string `json:"name"`
@@ -262,6 +262,13 @@ type lolEsportsSchedule struct {
 	} `json:"data"`
 }
 
+func parseRiotTime(s string) (time.Time, error) {
+	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+		return t, nil
+	}
+	return time.Parse(time.RFC3339, s)
+}
+
 func (b *Bot) handleLolEsports(ctx context.Context, ev *gateway.InteractionCreateEvent, _ *discord.CommandInteraction) error {
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://esports-api.lolesports.com/persisted/gw/getSchedule?hl=en-US", nil)
 	if err != nil {
@@ -269,8 +276,9 @@ func (b *Bot) handleLolEsports(ctx context.Context, ev *gateway.InteractionCreat
 		return err
 	}
 
-	// Public API Key used by LoLEsports web application
+	// Set required headers for Riot API Gateway
 	req.Header.Set("x-api-key", "0da1510442f2ed721ec4a1104b426d91")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
 
 	resp, err := b.httpClient.Do(req)
 	if err != nil {
@@ -286,7 +294,8 @@ func (b *Bot) handleLolEsports(ctx context.Context, ev *gateway.InteractionCreat
 	}
 
 	now := time.Now()
-	nextWeek := now.Add(7 * 24 * time.Hour)
+	pastCutoff := now.Add(-3 * time.Hour) // Include matches starting today
+	futureCutoff := now.Add(7 * 24 * time.Hour)
 
 	var liveMatches []string
 	var upcomingMatches []string
@@ -296,12 +305,12 @@ func (b *Bot) handleLolEsports(ctx context.Context, ev *gateway.InteractionCreat
 			continue
 		}
 
-		t, err := time.Parse(time.RFC3339, event.StartTime)
+		t, err := parseRiotTime(event.StartTime)
 		if err != nil {
 			continue
 		}
 
-		// Extract team names
+		// Extract team identifiers
 		team1, team2 := "TBD", "TBD"
 		if len(event.Match.Teams) >= 2 {
 			if event.Match.Teams[0].Code != "" {
@@ -321,8 +330,8 @@ func (b *Bot) handleLolEsports(ctx context.Context, ev *gateway.InteractionCreat
 
 		if event.State == "inProgress" {
 			liveMatches = append(liveMatches, fmt.Sprintf("🔴 %s — [Watch Live](https://lolesports.com/live)", matchTitle))
-		} else if event.State == "unstarted" && t.After(now) && t.Before(nextWeek) {
-			if len(upcomingMatches) < 8 { // Limit to 8 upcoming matches to fit Discord length limits
+		} else if event.State == "unstarted" && t.After(pastCutoff) && t.Before(futureCutoff) {
+			if len(upcomingMatches) < 10 {
 				unixTime := t.Unix()
 				upcomingMatches = append(upcomingMatches, fmt.Sprintf("📅 %s (<t:%d:R>)", matchTitle, unixTime))
 			}
