@@ -2,8 +2,11 @@ package bot
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,7 +29,8 @@ type Bot struct {
 	voiceMutex    sync.Mutex
 	voiceSessions map[discord.GuildID]*voice.Session
 
-	commands map[string]CommandHandler
+	httpClient *http.Client
+	commands   map[string]CommandHandler
 }
 
 func NewBot(token string) (*Bot, error) {
@@ -37,12 +41,14 @@ func NewBot(token string) (*Bot, error) {
 		state:          s,
 		cooldownPeriod: 3 * time.Second,
 		voiceSessions:  make(map[discord.GuildID]*voice.Session),
+		httpClient:     &http.Client{Timeout: 10 * time.Second},
 	}
 
 	b.commands = map[string]CommandHandler{
 		"join":       b.handleJoin,
 		"disconnect": b.handleDisconnect,
 		"type":       b.handleType,
+		"lol":        b.handleLolEsports,
 	}
 
 	return b, nil
@@ -80,6 +86,10 @@ func (b *Bot) Start(ctx context.Context) error {
 					Required:    true,
 				},
 			},
+		},
+		{
+			Name:        "lol",
+			Description: "Get live & upcoming LoL Esports tournaments and matches",
 		},
 	}
 
@@ -227,6 +237,122 @@ func (b *Bot) handleType(ctx context.Context, ev *gateway.InteractionCreateEvent
 	strVal := opt.String()
 
 	b.editResponse(ctx, ev, strVal)
+	return nil
+}
+
+// LoL Esports API structs
+type lolEsportsSchedule struct {
+	Data struct {
+		Schedule struct {
+			Events []struct {
+				StartTime string `json:"startTime"`
+				State     string `json:"state"` // "inProgress", "unstarted"
+				Type      string `json:"type"`  // "match"
+				League    struct {
+					Name string `json:"name"`
+				} `json:"league"`
+				Match struct {
+					Teams []struct {
+						Name string `json:"name"`
+						Code string `json:"code"`
+					} `json:"teams"`
+				} `json:"match"`
+			} `json:"events"`
+		} `json:"schedule"`
+	} `json:"data"`
+}
+
+func (b *Bot) handleLolEsports(ctx context.Context, ev *gateway.InteractionCreateEvent, _ *discord.CommandInteraction) error {
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://esports-api.lolesports.com/persisted/gw/getSchedule?hl=en-US", nil)
+	if err != nil {
+		b.editResponse(ctx, ev, "Failed to create request for esports data.")
+		return err
+	}
+
+	// Public API Key used by LoLEsports web application
+	req.Header.Set("x-api-key", "0da1510442f2ed721ec4a1104b426d91")
+
+	resp, err := b.httpClient.Do(req)
+	if err != nil {
+		b.editResponse(ctx, ev, "Failed to fetch LoL esports data.")
+		return err
+	}
+	defer resp.Body.Close()
+
+	var schedule lolEsportsSchedule
+	if err := json.NewDecoder(resp.Body).Decode(&schedule); err != nil {
+		b.editResponse(ctx, ev, "Failed to parse esports schedule.")
+		return err
+	}
+
+	now := time.Now()
+	nextWeek := now.Add(7 * 24 * time.Hour)
+
+	var liveMatches []string
+	var upcomingMatches []string
+
+	for _, event := range schedule.Data.Schedule.Events {
+		if event.Type != "match" {
+			continue
+		}
+
+		t, err := time.Parse(time.RFC3339, event.StartTime)
+		if err != nil {
+			continue
+		}
+
+		// Extract team names
+		team1, team2 := "TBD", "TBD"
+		if len(event.Match.Teams) >= 2 {
+			if event.Match.Teams[0].Code != "" {
+				team1 = event.Match.Teams[0].Code
+			} else if event.Match.Teams[0].Name != "" {
+				team1 = event.Match.Teams[0].Name
+			}
+
+			if event.Match.Teams[1].Code != "" {
+				team2 = event.Match.Teams[1].Code
+			} else if event.Match.Teams[1].Name != "" {
+				team2 = event.Match.Teams[1].Name
+			}
+		}
+
+		matchTitle := fmt.Sprintf("**%s**: %s vs %s", event.League.Name, team1, team2)
+
+		if event.State == "inProgress" {
+			liveMatches = append(liveMatches, fmt.Sprintf("🔴 %s — [Watch Live](https://lolesports.com/live)", matchTitle))
+		} else if event.State == "unstarted" && t.After(now) && t.Before(nextWeek) {
+			if len(upcomingMatches) < 8 { // Limit to 8 upcoming matches to fit Discord length limits
+				unixTime := t.Unix()
+				upcomingMatches = append(upcomingMatches, fmt.Sprintf("📅 %s (<t:%d:R>)", matchTitle, unixTime))
+			}
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString("🏆 **League of Legends Esports Schedule**\n\n")
+
+	if len(liveMatches) > 0 {
+		sb.WriteString("🔴 **LIVE NOW**\n")
+		for _, m := range liveMatches {
+			sb.WriteString(m + "\n")
+		}
+		sb.WriteString("\n")
+	} else {
+		sb.WriteString("🔴 **LIVE NOW**: No matches currently live.\n\n")
+	}
+
+	if len(upcomingMatches) > 0 {
+		sb.WriteString("📅 **UPCOMING (Next 7 Days)**\n")
+		for _, m := range upcomingMatches {
+			sb.WriteString(m + "\n")
+		}
+		sb.WriteString("\n📺 Watch all matches on [lolesports.com](https://lolesports.com)")
+	} else {
+		sb.WriteString("📅 **UPCOMING**: No upcoming matches scheduled for next week.")
+	}
+
+	b.editResponse(ctx, ev, sb.String())
 	return nil
 }
 
