@@ -1,217 +1,245 @@
 package bot
 
 import (
-	"context"
-	"fmt"
-	"log"
-	"sync"
-	"time"
+    "context"
+    "fmt"
+    "log"
+    "sync"
+    "time"
 
-	"github.com/diamondburned/arikawa/v3/api"
-	"github.com/diamondburned/arikawa/v3/discord"
-	"github.com/diamondburned/arikawa/v3/gateway"
-	"github.com/diamondburned/arikawa/v3/state"
-	"github.com/diamondburned/arikawa/v3/utils/json/option"
-	"github.com/diamondburned/arikawa/v3/voice"
+    "github.com/diamondburned/arikawa/v3/api"
+    "github.com/diamondburned/arikawa/v3/discord"
+    "github.com/diamondburned/arikawa/v3/gateway"
+    "github.com/diamondburned/arikawa/v3/state"
+    "github.com/diamondburned/arikawa/v3/utils/json/option"
+    "github.com/diamondburned/arikawa/v3/voice"
 )
 
-// CommandHandler defines the signature for slash command handlers.
 type CommandHandler func(ctx context.Context, ev *gateway.InteractionCreateEvent, data *discord.CommandInteraction) error
 
-// Bot wraps state, voice sessions, and command handling logic.
 type Bot struct {
-	state          *state.State
-	voiceSession   *voice.Session
-	cooldownPeriod time.Duration
-	userCooldowns  sync.Map // map[discord.UserID]time.Time
-	voiceMutex     sync.Mutex
-	commands       map[string]CommandHandler
+    state          *state.State
+    appID          discord.AppID
+    cooldownPeriod time.Duration
+    userCooldowns  sync.Map
+    
+    voiceMutex     sync.Mutex
+    voiceSessions  map[discord.GuildID]*voice.Session // Fixed: Manage sessions per guild
+
+    commands       map[string]CommandHandler
 }
 
-// NewBot initializes a new Bot instance.
 func NewBot(token string) (*Bot, error) {
-	s := state.New("Bot " + token)
-	s.AddIntents(gateway.IntentGuilds | gateway.IntentGuildVoiceStates | gateway.IntentGuildMessages)
+    s := state.New("Bot " + token)
+    s.AddIntents(gateway.IntentGuilds | gateway.IntentGuildVoiceStates | gateway.IntentGuildMessages)
 
-	v, err := voice.NewSession(s)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create voice session: %w", err)
-	}
+    b := &Bot{
+        state:          s,
+        cooldownPeriod: 3 * time.Second,
+        voiceSessions:  make(map[discord.GuildID]*voice.Session),
+    }
 
-	b := &Bot{
-		state:          s,
-		voiceSession:   v,
-		cooldownPeriod: 3 * time.Second,
-	}
+    b.commands = map[string]CommandHandler{
+        "join":       b.handleJoin,
+        "disconnect": b.handleDisconnect,
+        "type":       b.handleType,
+    }
 
-	// Register command mapping
-	b.commands = map[string]CommandHandler{
-		"join":       b.handleJoin,
-		"disconnect": b.handleDisconnect,
-		"type":       b.handleType,
-	}
-
-	return b, nil
+    return b, nil
 }
 
-// Start opens gateway connection and registers application slash commands.
 func (b *Bot) Start(ctx context.Context) error {
-	b.state.AddHandler(b.interactionHandler)
+    b.state.AddHandler(b.interactionHandler)
 
-	if err := b.state.Open(ctx); err != nil {
-		return fmt.Errorf("error opening state connection: %w", err)
-	}
+    app, err := b.state.CurrentApplication()
+    if err != nil {
+        return fmt.Errorf("failed to get current application info: %w", err)
+    }
+    b.appID = app.ID
 
-	app, err := b.state.CurrentApplication()
-	if err != nil {
-		return fmt.Errorf("failed to get current application info: %w", err)
-	}
+    if err := b.state.Open(ctx); err != nil {
+        return fmt.Errorf("error opening state connection: %w", err)
+    }
 
-	definitions := []api.CreateCommandData{
-		{
-			Name:        "join",
-			Description: "Join your current voice channel",
-		},
-		{
-			Name:        "disconnect",
-			Description: "Leave the voice channel",
-		},
-		{
-			Name:        "type",
-			Description: "Echo text back to the channel",
-			Options: discord.CommandOptions{
-				&discord.StringOption{
-					OptionName:  "text",
-					Description: "Text to send",
-					Required:    true,
-				},
-			},
-		},
-	}
+    definitions := []api.CreateCommandData{
+        {
+            Name:        "join",
+            Description: "Join your current voice channel",
+        },
+        {
+            Name:        "disconnect",
+            Description: "Leave the voice channel",
+        },
+        {
+            Name:        "type",
+            Description: "Echo text back to the channel",
+            Options: discord.CommandOptions{
+                &discord.StringOption{
+                    OptionName:  "text",
+                    Description: "Text to send",
+                    Required:    true,
+                },
+            },
+        },
+    }
 
-	log.Println("Registering slash commands...")
-	if _, err := b.state.BulkOverwriteCommands(app.ID, definitions); err != nil {
-		return fmt.Errorf("failed to register commands: %w", err)
-	}
+    log.Println("Registering slash commands...")
+    // Fixed: Use BulkOverwriteGlobalCommands instead of BulkOverwriteCommands
+    if _, err := b.state.BulkOverwriteGlobalCommands(b.appID, definitions); err != nil {
+        return fmt.Errorf("failed to register commands: %w", err)
+    }
 
-	log.Printf("Bot initialized as %s (App ID: %s)", app.Name, app.ID)
-	return nil
+    log.Printf("Bot initialized as %s (App ID: %s)", app.Name, b.appID)
+    return nil
 }
 
-// Stop gracefully leaves voice channels and closes gateway session.
 func (b *Bot) Stop() {
-	if b.state == nil {
-		return
-	}
+    if b.state == nil {
+        return
+    }
 
-	b.voiceMutex.Lock()
-	if b.voiceSession != nil {
-		_ = b.voiceSession.Leave(context.Background())
-	}
-	b.voiceMutex.Unlock()
+    b.voiceMutex.Lock()
+    for _, vs := range b.voiceSessions {
+        _ = vs.Leave(context.Background())
+    }
+    b.voiceMutex.Unlock()
 
-	if err := b.state.Close(); err != nil {
-		log.Printf("Error closing bot session: %v", err)
-	} else {
-		log.Println("Bot session stopped successfully.")
-	}
+    if err := b.state.Close(); err != nil {
+        log.Printf("Error closing bot session: %v", err)
+    } else {
+        log.Println("Bot session stopped successfully.")
+    }
 }
 
 func (b *Bot) interactionHandler(ev *gateway.InteractionCreateEvent) {
-	data, ok := ev.Data.(*discord.CommandInteraction)
-	if !ok {
-		return
-	}
+    data, ok := ev.Data.(*discord.CommandInteraction)
+    if !ok {
+        return
+    }
 
-	// Per-User Cooldown Check
-	userID := ev.SenderID()
-	now := time.Now()
-	if lastTime, loaded := b.userCooldowns.Load(userID); loaded {
-		if now.Sub(lastTime.(time.Time)) < b.cooldownPeriod {
-			_ = b.state.RespondInteraction(ev.ID, ev.Token, api.InteractionResponse{
-				Type: api.MessageInteractionWithSource,
-				Data: &api.InteractionResponseData{
-					Content: option.NewNullableString("You are sending commands too fast. Please wait."),
-					Flags:   discord.EphemeralMessage,
-				},
-			})
-			return
-		}
-	}
-	b.userCooldowns.Store(userID, now)
+    userID := ev.SenderID()
+    now := time.Now()
+    if lastTime, loaded := b.userCooldowns.Load(userID); loaded {
+        if now.Sub(lastTime.(time.Time)) < b.cooldownPeriod {
+            _ = b.state.RespondInteraction(ev.ID, ev.Token, api.InteractionResponse{
+                Type: api.MessageInteractionWithSource,
+                Data: &api.InteractionResponseData{
+                    Content: option.NewNullableString("You are sending commands too fast. Please wait."),
+                    Flags:   discord.EphemeralMessage,
+                },
+            })
+            return
+        }
+    }
+    b.userCooldowns.Store(userID, now)
 
-	ctx := context.Background()
+    ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+    defer cancel()
 
-	// Defer response to allow execution time
-	err := b.state.RespondInteraction(ev.ID, ev.Token, api.InteractionResponse{
-		Type: api.DeferredMessageInteractionWithSource,
-	})
-	if err != nil {
-		log.Printf("Failed to defer interaction: %v", err)
-		return
-	}
+    err := b.state.RespondInteraction(ev.ID, ev.Token, api.InteractionResponse{
+        Type: api.DeferredMessageInteractionWithSource,
+    })
+    if err != nil {
+        log.Printf("Failed to defer interaction: %v", err)
+        return
+    }
 
-	handler, exists := b.commands[data.Name]
-	if !exists {
-		b.editResponse(ctx, ev, "Unknown command.")
-		return
-	}
+    handler, exists := b.commands[data.Name]
+    if !exists {
+        b.editResponse(ctx, ev, "Unknown command.")
+        return
+    }
 
-	if err := handler(ctx, ev, data); err != nil {
-		log.Printf("Error handling command %q: %v", data.Name, err)
-		b.editResponse(ctx, ev, "An error occurred while executing the command.")
-	}
+    if err := handler(ctx, ev, data); err != nil {
+        log.Printf("Error handling command %q: %v", data.Name, err)
+        b.editResponse(ctx, ev, "An error occurred while executing the command.")
+    }
+}
+
+// getOrCreateVoiceSession manages multi-guild voice capability safely
+func (b *Bot) getOrCreateVoiceSession(guildID discord.GuildID) *voice.Session {
+    b.voiceMutex.Lock()
+    defer b.voiceMutex.Unlock()
+
+    vs, exists := b.voiceSessions[guildID]
+    if !exists {
+        // Fixed: Pass b.state, returns 1 value
+        vs = voice.NewSession(b.state)
+        b.state.AddHandler(vs.HandleVoiceStateUpdate)
+        b.state.AddHandler(vs.HandleVoiceServerUpdate)
+        b.voiceSessions[guildID] = vs
+    }
+    return vs
 }
 
 func (b *Bot) handleJoin(ctx context.Context, ev *gateway.InteractionCreateEvent, _ *discord.CommandInteraction) error {
-	vs, err := b.state.VoiceState(ev.GuildID, ev.SenderID())
-	if err != nil || !vs.ChannelID.IsValid() {
-		b.editResponse(ctx, ev, "You must be in a voice channel to use this command.")
-		return nil
-	}
+    vsState, err := b.state.VoiceState(ev.GuildID, ev.SenderID())
+    if err != nil || !vsState.ChannelID.IsValid() {
+        b.editResponse(ctx, ev, "You must be in a voice channel to use this command.")
+        return nil
+    }
 
-	b.voiceMutex.Lock()
-	defer b.voiceMutex.Unlock()
+    vs := b.getOrCreateVoiceSession(ev.GuildID)
 
-	err = b.voiceSession.JoinChannel(ctx, vs.ChannelID, false, true)
-	if err != nil {
-		b.editResponse(ctx, ev, fmt.Sprintf("Failed to join voice channel: %v", err))
-		return err
-	}
+    // Fixed: JoinChannel returns 2 values, do network call outside mutex block
+    _, err = vs.JoinChannel(ctx, vsState.ChannelID, false, true)
+    if err != nil {
+        b.editResponse(ctx, ev, fmt.Sprintf("Failed to join voice channel: %v", err))
+        return err
+    }
 
-	b.editResponse(ctx, ev, "Successfully joined your voice channel!")
-	return nil
+    b.editResponse(ctx, ev, "Successfully joined your voice channel!")
+    return nil
 }
 
 func (b *Bot) handleDisconnect(ctx context.Context, ev *gateway.InteractionCreateEvent, _ *discord.CommandInteraction) error {
-	b.voiceMutex.Lock()
-	defer b.voiceMutex.Unlock()
+    b.voiceMutex.Lock()
+    vs, exists := b.voiceSessions[ev.GuildID]
+    b.voiceMutex.Unlock()
 
-	if err := b.voiceSession.Leave(ctx); err != nil {
-		b.editResponse(ctx, ev, "Failed to disconnect or not currently in a voice channel.")
-		return err
-	}
+    if !exists {
+        b.editResponse(ctx, ev, "I am not currently in a voice channel.")
+        return nil
+    }
 
-	b.editResponse(ctx, ev, "Disconnected from the voice channel.")
-	return nil
+    if err := vs.Leave(ctx); err != nil {
+        b.editResponse(ctx, ev, "Failed to disconnect.")
+        return err
+    }
+
+    // Clean up mapping
+    b.voiceMutex.Lock()
+    delete(b.voiceSessions, ev.GuildID)
+    b.voiceMutex.Unlock()
+
+    b.editResponse(ctx, ev, "Disconnected from the voice channel.")
+    return nil
 }
 
 func (b *Bot) handleType(ctx context.Context, ev *gateway.InteractionCreateEvent, data *discord.CommandInteraction) error {
-	opt := data.Options.Find("text")
-	if opt == nil {
-		b.editResponse(ctx, ev, "Missing required option: text")
-		return nil
-	}
+    opt := data.Options.Find("text")
+    if opt == nil {
+        b.editResponse(ctx, ev, "Missing required option: text")
+        return nil
+    }
 
-	b.editResponse(ctx, ev, opt.Value.String())
-	return nil
+    // Fixed: opt.String() safely handles returning the unquoted string
+    strVal := opt.String()
+
+    b.editResponse(ctx, ev, strVal)
+    return nil
 }
 
 func (b *Bot) editResponse(ctx context.Context, ev *gateway.InteractionCreateEvent, content string) {
-	_, err := b.state.EditInteractionResponse(ev.AppID, ev.Token, api.EditInteractionResponseData{
-		Content: option.NewNullableString(content),
-	})
-	if err != nil {
-		log.Printf("Failed to edit interaction response: %v", err)
-	}
+    appID := ev.AppID
+    if appID == 0 {
+        appID = b.appID
+    }
+
+    _, err := b.state.EditInteractionResponse(appID, ev.Token, api.EditInteractionResponseData{
+        Content: option.NewNullableString(content),
+    })
+    if err != nil {
+        log.Printf("Failed to edit interaction response: %v", err)
+    }
 }
