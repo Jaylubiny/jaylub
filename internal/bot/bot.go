@@ -160,8 +160,7 @@ func (b *Bot) interactionHandler(ev *gateway.InteractionCreateEvent) {
 	}
 
 	if err := handler(ctx, ev, data); err != nil {
-		log.Printf("Error handling command %q: %v", data.Name, err)
-		b.editResponse(ctx, ev, "An error occurred while executing the command.")
+		log.Printf("Error executing handler for command %q: %v", data.Name, err)
 	}
 }
 
@@ -191,13 +190,13 @@ func (b *Bot) handleJoin(ctx context.Context, ev *gateway.InteractionCreateEvent
 	vs, err := b.getOrCreateVoiceSession(ev.GuildID)
 	if err != nil {
 		b.editResponse(ctx, ev, "Failed to initialize voice session.")
-		return err
+		return nil
 	}
 
 	err = vs.JoinChannel(ctx, vsState.ChannelID, false, true)
 	if err != nil {
 		b.editResponse(ctx, ev, fmt.Sprintf("Failed to join voice channel: %v", err))
-		return err
+		return nil
 	}
 
 	b.editResponse(ctx, ev, "Successfully joined your voice channel!")
@@ -216,7 +215,7 @@ func (b *Bot) handleDisconnect(ctx context.Context, ev *gateway.InteractionCreat
 
 	if err := vs.Leave(ctx); err != nil {
 		b.editResponse(ctx, ev, "Failed to disconnect.")
-		return err
+		return nil
 	}
 
 	b.voiceMutex.Lock()
@@ -240,14 +239,13 @@ func (b *Bot) handleType(ctx context.Context, ev *gateway.InteractionCreateEvent
 	return nil
 }
 
-// LoL Esports API structs
 type lolEsportsSchedule struct {
 	Data struct {
 		Schedule struct {
 			Events []struct {
 				StartTime string `json:"startTime"`
-				State     string `json:"state"` // "inProgress", "unstarted", "completed"
-				Type      string `json:"type"`  // "match"
+				State     string `json:"state"`
+				Type      string `json:"type"`
 				League    struct {
 					Name string `json:"name"`
 				} `json:"league"`
@@ -272,37 +270,40 @@ func parseRiotTime(s string) (time.Time, error) {
 func (b *Bot) handleLolEsports(ctx context.Context, ev *gateway.InteractionCreateEvent, _ *discord.CommandInteraction) error {
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://esports-api.lolesports.com/persisted/gw/getSchedule?hl=en-US", nil)
 	if err != nil {
+		log.Printf("[lol] Failed to create HTTP request: %v", err)
 		b.editResponse(ctx, ev, "Failed to create request for esports data.")
-		return err
+		return nil
 	}
 
-	// Full set of headers required by Riot's Cloudflare Gateway
-	req.Header.Set("x-api-key", "0da1510442f2ed721ec4a1104b426d91")
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("x-api-key", "0TvQnueqKa5mxJntVWt0w4LpLfEkrV1Ta8rQBb9Z")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Origin", "https://lolesports.com")
 	req.Header.Set("Referer", "https://lolesports.com/")
 
 	resp, err := b.httpClient.Do(req)
 	if err != nil {
-		b.editResponse(ctx, ev, "Failed to connect to Riot Esports API.")
-		return err
+		log.Printf("[lol] Network request failed: %v", err)
+		b.editResponse(ctx, ev, "Failed to connect to Riot Esports API server.")
+		return nil
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		b.editResponse(ctx, ev, fmt.Sprintf("Riot API error (HTTP %d). Please try again later.", resp.StatusCode))
-		return fmt.Errorf("riot api error status: %d", resp.StatusCode)
+		log.Printf("[lol] Riot API returned HTTP status %d", resp.StatusCode)
+		b.editResponse(ctx, ev, fmt.Sprintf("Riot API returned HTTP status error %d.", resp.StatusCode))
+		return nil
 	}
 
 	var schedule lolEsportsSchedule
 	if err := json.NewDecoder(resp.Body).Decode(&schedule); err != nil {
+		log.Printf("[lol] Failed to decode JSON: %v", err)
 		b.editResponse(ctx, ev, "Failed to parse esports schedule response.")
-		return err
+		return nil
 	}
 
 	now := time.Now().UTC()
-	pastCutoff := now.Add(-12 * time.Hour) // Allow matches scheduled earlier today
+	pastCutoff := now.Add(-12 * time.Hour)
 	futureCutoff := now.Add(7 * 24 * time.Hour)
 
 	var liveMatches []string
