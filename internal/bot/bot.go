@@ -276,25 +276,33 @@ func (b *Bot) handleLolEsports(ctx context.Context, ev *gateway.InteractionCreat
 		return err
 	}
 
-	// Set required headers for Riot API Gateway
+	// Full set of headers required by Riot's Cloudflare Gateway
 	req.Header.Set("x-api-key", "0da1510442f2ed721ec4a1104b426d91")
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Origin", "https://lolesports.com")
+	req.Header.Set("Referer", "https://lolesports.com/")
 
 	resp, err := b.httpClient.Do(req)
 	if err != nil {
-		b.editResponse(ctx, ev, "Failed to fetch LoL esports data.")
+		b.editResponse(ctx, ev, "Failed to connect to Riot Esports API.")
 		return err
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		b.editResponse(ctx, ev, fmt.Sprintf("Riot API error (HTTP %d). Please try again later.", resp.StatusCode))
+		return fmt.Errorf("riot api error status: %d", resp.StatusCode)
+	}
+
 	var schedule lolEsportsSchedule
 	if err := json.NewDecoder(resp.Body).Decode(&schedule); err != nil {
-		b.editResponse(ctx, ev, "Failed to parse esports schedule.")
+		b.editResponse(ctx, ev, "Failed to parse esports schedule response.")
 		return err
 	}
 
-	now := time.Now()
-	pastCutoff := now.Add(-3 * time.Hour) // Include matches starting today
+	now := time.Now().UTC()
+	pastCutoff := now.Add(-12 * time.Hour) // Allow matches scheduled earlier today
 	futureCutoff := now.Add(7 * 24 * time.Hour)
 
 	var liveMatches []string
@@ -310,7 +318,6 @@ func (b *Bot) handleLolEsports(ctx context.Context, ev *gateway.InteractionCreat
 			continue
 		}
 
-		// Extract team identifiers
 		team1, team2 := "TBD", "TBD"
 		if len(event.Match.Teams) >= 2 {
 			if event.Match.Teams[0].Code != "" {
@@ -326,11 +333,16 @@ func (b *Bot) handleLolEsports(ctx context.Context, ev *gateway.InteractionCreat
 			}
 		}
 
-		matchTitle := fmt.Sprintf("**%s**: %s vs %s", event.League.Name, team1, team2)
+		leagueName := event.League.Name
+		if leagueName == "" {
+			leagueName = "LoL Esports"
+		}
+
+		matchTitle := fmt.Sprintf("**%s**: %s vs %s", leagueName, team1, team2)
 
 		if event.State == "inProgress" {
 			liveMatches = append(liveMatches, fmt.Sprintf("🔴 %s — [Watch Live](https://lolesports.com/live)", matchTitle))
-		} else if event.State == "unstarted" && t.After(pastCutoff) && t.Before(futureCutoff) {
+		} else if (event.State == "unstarted" || event.State == "scheduled") && t.After(pastCutoff) && t.Before(futureCutoff) {
 			if len(upcomingMatches) < 10 {
 				unixTime := t.Unix()
 				upcomingMatches = append(upcomingMatches, fmt.Sprintf("📅 %s (<t:%d:R>)", matchTitle, unixTime))
