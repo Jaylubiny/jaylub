@@ -35,7 +35,7 @@ func main() {
 	}
 
 	go func() {
-		if err := discordBot.Start(); err != nil {
+		if err := discordBot.Start(context.Background()); err != nil {
 			log.Fatalf("Discord bot runtime failure: %v", err)
 		}
 	}()
