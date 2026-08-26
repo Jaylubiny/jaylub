@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"jaylub/internal/auth"
-	"jaylub/internal/bot" // Imported your new bot package
 	"log"
 	"net/http"
-	"os" // Added to read environment variables
+	"os"
+	"os/signal"
+	"syscall"
 
+	"jaylub/internal/auth"
+	"jaylub/internal/bot"
 	router "jaylub/internal/routers"
 )
 
@@ -17,6 +20,10 @@ type server struct {
 }
 
 func main() {
+	// Create context listening for system termination signals (SIGINT, SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	authService, err := auth.New("internal/database/users.db")
 	if err != nil {
 		log.Fatal(err)
@@ -35,7 +42,7 @@ func main() {
 	}
 
 	go func() {
-		if err := discordBot.Start(context.Background()); err != nil {
+		if err := discordBot.Start(ctx); err != nil {
 			log.Fatalf("Discord bot runtime failure: %v", err)
 		}
 	}()
@@ -47,12 +54,13 @@ func main() {
 		{":8090", router.Company(authService)},
 	}
 
-	for _, srv := range servers[:len(servers)-1] {
+	for _, srv := range servers {
 		go startServer(srv)
 	}
 
-	go startServer(servers[len(servers)-1])
-	select {}
+	// Wait for OS shutdown signal so defers can execute properly
+	<-ctx.Done()
+	fmt.Println("Shutting down gracefully...")
 }
 
 func startServer(srv server) {
