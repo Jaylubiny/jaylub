@@ -139,7 +139,7 @@ func (b *Bot) interactionHandler(ev *gateway.InteractionCreateEvent) {
 func (b *Bot) handleJoin(ctx context.Context, ev *gateway.InteractionCreateEvent) {
 	vs, err := b.state.VoiceState(ev.GuildID, ev.SenderID())
 	if err != nil || !vs.ChannelID.IsValid() {
-		b.editResponse(ev, "❌ You are not in a voice channel")
+		b.editResponse(ev, "You are not in a voice channel")
 		return
 	}
 
@@ -154,12 +154,12 @@ func (b *Bot) handleJoin(ctx context.Context, ev *gateway.InteractionCreateEvent
 			log.Printf("Voice join handshake completed successfully (filtered framework error: %v)", err)
 		} else {
 			log.Printf("genuine voice join error: %v", err)
-			b.editResponse(ev, "❌ Voice join failed: "+err.Error())
+			b.editResponse(ev, "Voice join failed: "+err.Error())
 			return
 		}
 	}
 
-	b.editResponse(ev, "🔊 Successfully joined voice channel!")
+	b.editResponse(ev, "Successfully joined voice channel!")
 }
 
 func (b *Bot) handleDisconnect(ctx context.Context, ev *gateway.InteractionCreateEvent) {
@@ -170,11 +170,11 @@ func (b *Bot) handleDisconnect(ctx context.Context, ev *gateway.InteractionCreat
 	err := b.voiceSession.Leave(ctx)
 	if err != nil {
 		log.Printf("voice disconnect error: %v", err)
-		b.editResponse(ev, "❌ Disconnect failed or bot not in voice channel")
+		b.editResponse(ev, "Disconnect failed or bot not in voice channel")
 		return
 	}
 
-	b.editResponse(ev, "👋 Disconnected")
+	b.editResponse(ev, "Disconnected")
 }
 
 func (b *Bot) handleType(ctx context.Context, ev *gateway.InteractionCreateEvent, text string) {
