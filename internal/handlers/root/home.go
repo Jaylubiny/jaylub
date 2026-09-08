@@ -24,7 +24,7 @@ var (
 	GameTest    = renderer.Page("game_test")
 	Jaylub      = renderer.Page("jaylub_page")
 	Nullc       = renderer.Page("nullc")
-	Jayos       = renderer.Page("nullos")
+	Jayos       = renderer.Page("jayos")
 	Page        = renderer.Page("page")
 	Services    = renderer.Page("services")
 	Wiki_C      = renderer.Page("wiki_c")
