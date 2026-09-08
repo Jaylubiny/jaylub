@@ -38,7 +38,7 @@ func Basic(authService *auth.Service) http.Handler {
 		{"/pages", handlers.Page},
 		{"/pages/jayware", handlers.Jayware},
 		{"/pages/jayware/download", handlers.JaywareDownload},
-		{"/pages/jayos", handlers.Nullos},
+		{"/pages/jayos", handlers.Jayos},
 		{"/pages/nullc", handlers.Nullc},
 		{"/pages/allah", handlers.Allah},
 		{"/pages/jaylub", handlers.Jaylub},
