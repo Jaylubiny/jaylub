@@ -56,3 +56,5 @@ bulvy jaylub that shoots 2 lazers
 better chat experience and more secure chat
 
 TowerTrack - run tracker for the game The Tower with parsed info into spreadsheet
+
+configuration for chat ( like time formats theme etc. )
