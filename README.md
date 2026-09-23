@@ -57,4 +57,4 @@ better chat experience and more secure chat
 
 TowerTrack - run tracker for the game The Tower with parsed info into spreadsheet
 
-configuration for chat ( like time formats theme etc. )
+bot sending message when an update is pushed to prod (on command by the owner - preclik02)
