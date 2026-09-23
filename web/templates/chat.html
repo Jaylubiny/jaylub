@@ -5,7 +5,7 @@
 
 {{define "content"}}
 
-<section class="chat-page" data-current-user="{{.Username}}">
+<section class="chat-page" data-current-user="{{.Username}}" data-time-format="{{.ChatSettings.TimeFormat}}" data-message-density="{{.ChatSettings.MessageDensity}}" data-show-timestamps="{{.ChatSettings.ShowTimestamps}}">
     <header class="chat-header">
         <div>
             <h1>Chat</h1>

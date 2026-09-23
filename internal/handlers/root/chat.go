@@ -27,6 +27,55 @@ type ChatService struct {
 	lastActive map[string]time.Time
 }
 
+func Settings(authService *auth.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user, ok := auth.UserFromContext(r.Context())
+		if !ok {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		switch r.Method {
+		case http.MethodGet:
+			renderer.Render(w, r, "settings")
+		case http.MethodPost:
+			if err := r.ParseForm(); err != nil {
+				http.Error(w, "Bad Request", http.StatusBadRequest)
+				return
+			}
+
+			settings, err := parseChatSettings(r)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if err := authService.SaveChatSettings(user.ID, settings); err != nil {
+				http.Error(w, "Could not save settings.", http.StatusInternalServerError)
+				return
+			}
+			http.Redirect(w, r, "/settings?saved=1", http.StatusSeeOther)
+		default:
+			w.Header().Set("Allow", "GET, POST")
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		}
+	}
+}
+
+func parseChatSettings(r *http.Request) (auth.ChatSettings, error) {
+	settings := auth.DefaultChatSettings()
+	settings.TimeFormat = r.FormValue("time_format")
+	settings.MessageDensity = r.FormValue("message_density")
+	settings.ShowTimestamps = r.FormValue("show_timestamps") == "on"
+
+	if settings.TimeFormat != "24h" && settings.TimeFormat != "12h" && settings.TimeFormat != "relative" {
+		return settings, errors.New("Invalid time format.")
+	}
+	if settings.MessageDensity != "comfortable" && settings.MessageDensity != "compact" {
+		return settings, errors.New("Invalid message density.")
+	}
+	return settings, nil
+}
+
 type ChatMessage struct {
 	ID        int64  `json:"id"`
 	Username  string `json:"username"`

@@ -142,6 +142,28 @@ nav a:hover {
   background: rgba(139, 92, 246, 0.12);
 }
 
+.profile-settings-link {
+  display: block;
+  min-height: 42px;
+  margin-bottom: 12px;
+  padding: 11px 13px;
+  color: #fff !important;
+  background: linear-gradient(135deg, var(--theme-purple), var(--theme-purple-2));
+  border: 1px solid var(--theme-purple-2);
+  border-radius: 9px;
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.24);
+  font-weight: 800;
+  text-align: center;
+  text-decoration: none;
+}
+
+.profile-settings-link:hover {
+  color: #fff !important;
+  background: linear-gradient(135deg, var(--theme-purple-2), #c084fc);
+  box-shadow: 0 0 28px rgba(168, 85, 246, 0.4);
+  transform: translateY(-1px);
+}
+
 .profile-stats {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -227,8 +249,6 @@ p {
     padding-right: 4px;
   }
 }
-
-
 
 
 

@@ -1,0 +1,49 @@
+{{define "head"}}
+<link rel="stylesheet" href="/web/static/css/settings.css">
+{{end}}
+
+{{define "content"}}
+<section class="settings-page">
+    <header class="settings-header">
+        <p class="eyebrow">Profile settings</p>
+        <h1>Chat settings</h1>
+        <p>Make the global chat feel more like yours. These preferences are saved to your account.</p>
+    </header>
+
+    {{if eq .Query "1"}}<div class="settings-success" role="status">Your chat settings were saved.</div>{{end}}
+
+    <form class="settings-card" method="post" action="/settings">
+        <fieldset>
+            <legend>Chat preferences</legend>
+            <label>
+                <span>Message spacing</span>
+                <select name="message_density">
+                    <option value="comfortable" {{if eq .ChatSettings.MessageDensity "comfortable"}}selected{{end}}>Comfortable</option>
+                    <option value="compact" {{if eq .ChatSettings.MessageDensity "compact"}}selected{{end}}>Compact</option>
+                </select>
+            </label>
+        </fieldset>
+
+        <fieldset>
+            <legend>Time and details</legend>
+            <label>
+                <span>Message time format</span>
+                <select name="time_format">
+                    <option value="24h" {{if eq .ChatSettings.TimeFormat "24h"}}selected{{end}}>24-hour time</option>
+                    <option value="12h" {{if eq .ChatSettings.TimeFormat "12h"}}selected{{end}}>12-hour time</option>
+                    <option value="relative" {{if eq .ChatSettings.TimeFormat "relative"}}selected{{end}}>Relative time</option>
+                </select>
+            </label>
+            <label class="checkbox-row">
+                <input type="checkbox" name="show_timestamps" {{if .ChatSettings.ShowTimestamps}}checked{{end}}>
+                <span>Show timestamps on messages</span>
+            </label>
+        </fieldset>
+
+        <div class="settings-actions">
+            <a href="/chat">Back to chat</a>
+            <button type="submit">Save settings</button>
+        </div>
+    </form>
+</section>
+{{end}}

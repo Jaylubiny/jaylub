@@ -5,6 +5,18 @@
   gap: 18px;
 }
 
+.chat-page[data-message-density="compact"] {
+  gap: 12px;
+}
+
+.chat-page[data-message-density="compact"] .message-list {
+  gap: 6px;
+}
+
+.chat-page[data-message-density="compact"] .message {
+  padding: 8px 10px;
+}
+
 .chat-header {
   display: flex;
   align-items: center;

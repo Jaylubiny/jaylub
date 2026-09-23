@@ -34,6 +34,12 @@ type User struct {
 	Username string
 }
 
+type ChatSettings struct {
+	TimeFormat     string
+	MessageDensity string
+	ShowTimestamps bool
+}
+
 type Service struct {
 	db *sql.DB
 }
@@ -69,6 +75,49 @@ func (s *Service) DB() *sql.DB {
 	return s.db
 }
 
+func DefaultChatSettings() ChatSettings {
+	return ChatSettings{
+		TimeFormat:     "24h",
+		MessageDensity: "comfortable",
+		ShowTimestamps: true,
+	}
+}
+
+func (s *Service) ChatSettings(userID int64) (ChatSettings, error) {
+	settings := DefaultChatSettings()
+	var showTimestamps int
+	err := s.db.QueryRow(`
+		SELECT time_format, message_density, show_timestamps
+		FROM chat_settings
+		WHERE user_id = ?
+	`, userID).Scan(
+		&settings.TimeFormat,
+		&settings.MessageDensity,
+		&showTimestamps,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		_, err = s.db.Exec(`INSERT INTO chat_settings (user_id) VALUES (?)`, userID)
+		return settings, err
+	}
+	if err != nil {
+		return settings, err
+	}
+	settings.ShowTimestamps = showTimestamps != 0
+	return settings, nil
+}
+
+func (s *Service) SaveChatSettings(userID int64, settings ChatSettings) error {
+	_, err := s.db.Exec(`
+		INSERT INTO chat_settings (user_id, time_format, message_density, show_timestamps)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(user_id) DO UPDATE SET
+			time_format = excluded.time_format,
+			message_density = excluded.message_density,
+			show_timestamps = excluded.show_timestamps
+	`, userID, settings.TimeFormat, settings.MessageDensity, settings.ShowTimestamps)
+	return err
+}
+
 func (s *Service) initSchema() error {
 	_, err := s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS users (
@@ -100,6 +149,14 @@ func (s *Service) initSchema() error {
 		CREATE TABLE IF NOT EXISTS chat_reads (
 			user_id INTEGER PRIMARY KEY,
 			last_read_at DATETIME NOT NULL,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		);
+
+		CREATE TABLE IF NOT EXISTS chat_settings (
+			user_id INTEGER PRIMARY KEY,
+			time_format TEXT NOT NULL DEFAULT '24h',
+			message_density TEXT NOT NULL DEFAULT 'comfortable',
+			show_timestamps INTEGER NOT NULL DEFAULT 1,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		);
 

@@ -14,8 +14,10 @@ type PageData struct {
 	Title           string
 	Username        string
 	Initials        string
+	Query           string
 	Stats           ProfileStats
 	ChatUnreadCount int
+	ChatSettings    auth.ChatSettings
 }
 
 type ProfileStats struct {
@@ -66,17 +68,48 @@ func (r *Renderer) Render(w http.ResponseWriter, req *http.Request, name string)
 		return
 	}
 
-	data := PageData{Title: name}
+	data := PageData{Title: name, Query: req.URL.Query().Get("saved")}
 	if user, ok := auth.UserFromContext(req.Context()); ok {
 		data.Username = user.Username
 		data.Initials = initials(user.Username)
 		data.Stats = r.profileStats(user)
 		data.ChatUnreadCount = r.chatUnreadCount(user)
+		if settings, err := r.chatSettings(user); err == nil {
+			data.ChatSettings = settings
+		} else {
+			data.ChatSettings = auth.DefaultChatSettings()
+		}
 	}
 
 	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
 		http.Error(w, "Template Error", http.StatusInternalServerError)
 	}
+}
+
+func (r *Renderer) chatSettings(user auth.User) (auth.ChatSettings, error) {
+	if r.db == nil {
+		return auth.DefaultChatSettings(), nil
+	}
+
+	settings := auth.DefaultChatSettings()
+	var showTimestamps int
+	err := r.db.QueryRow(`
+		SELECT time_format, message_density, show_timestamps
+		FROM chat_settings
+		WHERE user_id = ?
+	`, user.ID).Scan(
+		&settings.TimeFormat,
+		&settings.MessageDensity,
+		&showTimestamps,
+	)
+	if err == sql.ErrNoRows {
+		return settings, nil
+	}
+	if err != nil {
+		return settings, err
+	}
+	settings.ShowTimestamps = showTimestamps != 0
+	return settings, nil
 }
 
 func (r *Renderer) profileStats(user auth.User) ProfileStats {

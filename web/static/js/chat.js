@@ -6,8 +6,15 @@ const onlineCount = document.getElementById("online-count");
 const chatError = document.getElementById("chat-error");
 
 const currentUser = chatPage?.dataset.currentUser || "";
+const timeFormat = chatPage?.dataset.timeFormat || "24h";
+const messageDensity = chatPage?.dataset.messageDensity || "comfortable";
+const showTimestamps = chatPage?.dataset.showTimestamps !== "false";
 let lastMessageId = 0;
 let polling = false;
+
+if (chatPage) {
+  chatPage.dataset.messageDensity = messageDensity;
+}
 
 function nearBottom() {
   return messageList.scrollHeight - messageList.scrollTop - messageList.clientHeight < 80;
@@ -32,11 +39,19 @@ function formatTime(value) {
   if (Number.isNaN(date.getTime())) {
     return value;
   }
+  if (timeFormat === "relative") {
+    const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+    if (seconds < 60) return "just now";
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    return `${Math.floor(seconds / 86400)}d ago`;
+  }
   return date.toLocaleString([], {
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: timeFormat === "12h",
   });
 }
 
@@ -63,6 +78,7 @@ function appendMessage(message) {
   timestamp.className = "message-time";
   timestamp.dateTime = message.timestamp;
   timestamp.textContent = formatTime(message.timestamp);
+  timestamp.hidden = !showTimestamps;
 
   const body = document.createElement("p");
   body.className = "message-body";

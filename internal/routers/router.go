@@ -19,6 +19,7 @@ func Basic(authService *auth.Service) http.Handler {
 		{"/", handlers.Home},
 		{"/about", handlers.About},
 		{"/me", handlers.Me},
+		{"/settings", handlers.Settings(authService)},
 		{"/contacts", handlers.Contacts},
 		{"/docs", handlers.Docs},
 		{"/documentation", handlers.Docs},
