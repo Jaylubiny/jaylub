@@ -49,6 +49,13 @@
   white-space: nowrap;
 }
 
+.chat-status-dot {
+  width: 8px;
+  height: 8px;
+  background: #4ade80;
+  border-radius: 50%;
+}
+
 .message-list {
   display: flex;
   height: min(62vh, 560px);
@@ -62,6 +69,12 @@
   border-radius: 12px;
   scrollbar-color: rgba(56, 189, 248, 0.55) rgba(2, 6, 23, 0.55);
   scrollbar-width: thin;
+}
+
+.chat-empty {
+  margin: auto;
+  color: #94a3b8;
+  text-align: center;
 }
 
 .message-list::-webkit-scrollbar {
@@ -130,6 +143,86 @@
   align-items: stretch;
 }
 
+.chat-compose {
+  display: flex;
+  min-width: 92px;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chat-actions {
+  display: grid;
+  grid-template-columns: 44px minmax(92px, 1fr);
+  gap: 8px;
+}
+
+.file-button {
+  min-width: 44px !important;
+  padding: 0 !important;
+  color: var(--text) !important;
+  background: rgba(148, 163, 184, 0.18) !important;
+  font-size: 1.5rem;
+}
+
+.file-button:hover {
+  background: rgba(148, 163, 184, 0.3) !important;
+}
+
+.message-counter {
+  color: #94a3b8;
+  font-size: 0.8rem;
+  text-align: right;
+}
+
+.file-name {
+  max-width: 150px;
+  overflow: hidden;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-attachment {
+  display: block;
+  margin-top: 10px;
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+
+.message-image {
+  display: block;
+  width: 220px;
+  height: 140px;
+  object-fit: contain;
+  background: rgba(2, 6, 23, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+}
+
+.chat-connection,
+.new-messages {
+  padding: 8px 12px;
+  color: #bae6fd;
+  background: rgba(14, 116, 144, 0.25);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.chat-connection.offline {
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.35);
+  border-color: rgba(248, 113, 113, 0.35);
+}
+
+.new-messages {
+  align-self: center;
+  cursor: pointer;
+}
+
 .chat-form textarea {
   width: 100%;
   min-height: 52px;
@@ -157,6 +250,10 @@
   border-radius: 8px;
   cursor: pointer;
   font-weight: 800;
+}
+
+.chat-compose button {
+  min-height: 44px;
 }
 
 .chat-form button:hover {

@@ -146,6 +146,18 @@ func (s *Service) initSchema() error {
 		CREATE INDEX IF NOT EXISTS idx_chat_messages_timestamp ON chat_messages(timestamp);
 		CREATE INDEX IF NOT EXISTS idx_chat_messages_id ON chat_messages(id);
 
+		CREATE TABLE IF NOT EXISTS chat_attachments (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			message_id INTEGER NOT NULL,
+			original_name TEXT NOT NULL,
+			stored_name TEXT NOT NULL UNIQUE,
+			content_type TEXT NOT NULL,
+			size INTEGER NOT NULL,
+			FOREIGN KEY (message_id) REFERENCES chat_messages(id) ON DELETE CASCADE
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_chat_attachments_message_id ON chat_attachments(message_id);
+
 		CREATE TABLE IF NOT EXISTS chat_reads (
 			user_id INTEGER PRIMARY KEY,
 			last_read_at DATETIME NOT NULL,
@@ -336,6 +348,10 @@ func (s *Service) Logout(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+
 		if s.isPublicPath(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return

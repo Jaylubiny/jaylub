@@ -52,6 +52,7 @@ func Basic(authService *auth.Service) http.Handler {
 		{"/chat", chatService.Page},
 		{"/chat/messages", chatService.Messages},
 		{"/chat/send", chatService.SendMessage},
+		{"/chat/files/", chatService.File},
 	}
 	return newMux(routes, authService)
 }

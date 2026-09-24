@@ -1,6 +1,6 @@
 {{define "head"}}
-<link rel="stylesheet" href="/web/static/css/chat.css">
-<script src="/web/static/js/chat.js" defer></script>
+<link rel="stylesheet" href="/web/static/css/chat.css?v=chat-2">
+<script src="/web/static/js/chat.js?v=chat-2" defer></script>
 {{end}}
 
 {{define "content"}}
@@ -9,21 +9,34 @@
     <header class="chat-header">
         <div>
             <h1>Chat</h1>
-            <p>Global room for logged-in Jaylub users.</p>
+            <p>Global room for logged-in Jaylub users. Messages update automatically.</p>
         </div>
         <div class="chat-status" aria-label="Online users">
-            <span id="online-count">1</span>
+            <span class="chat-status-dot" aria-hidden="true"></span>
+            <span id="online-count">0</span>
             <span>online</span>
         </div>
     </header>
 
     <div id="chat-error" class="chat-error" role="alert" hidden></div>
+    <div id="chat-connection" class="chat-connection" role="status" hidden></div>
 
-    <section id="message-list" class="message-list" aria-live="polite" aria-label="Chat messages"></section>
+    <section id="message-list" class="message-list" aria-live="polite" aria-label="Chat messages">
+        <p class="chat-empty">Loading messages…</p>
+    </section>
+    <button id="new-messages" class="new-messages" type="button" hidden>New messages</button>
 
     <form id="chat-form" class="chat-form" autocomplete="off">
         <textarea id="message-input" name="message" maxlength="500" rows="2" placeholder="Message" aria-label="Message"></textarea>
-        <button type="submit">Send</button>
+        <input id="file-input" name="file" type="file" hidden>
+        <div class="chat-compose">
+            <span id="message-counter" class="message-counter" aria-live="polite">0 / 500</span>
+            <div class="chat-actions">
+                <button id="file-button" class="file-button" type="button" aria-label="Attach a file" title="Attach a file">+</button>
+                <button type="submit">Send</button>
+            </div>
+            <span id="file-name" class="file-name" aria-live="polite"></span>
+        </div>
     </form>
 </section>
 

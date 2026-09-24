@@ -4,6 +4,12 @@ const chatForm = document.getElementById("chat-form");
 const messageInput = document.getElementById("message-input");
 const onlineCount = document.getElementById("online-count");
 const chatError = document.getElementById("chat-error");
+const chatConnection = document.getElementById("chat-connection");
+const newMessages = document.getElementById("new-messages");
+const messageCounter = document.getElementById("message-counter");
+const fileInput = document.getElementById("file-input");
+const fileButton = document.getElementById("file-button");
+const fileName = document.getElementById("file-name");
 
 const currentUser = chatPage?.dataset.currentUser || "";
 const timeFormat = chatPage?.dataset.timeFormat || "24h";
@@ -34,6 +40,12 @@ function clearError() {
   chatError.hidden = true;
 }
 
+function setConnection(connected) {
+  chatConnection.textContent = connected ? "Connected" : "Reconnecting…";
+  chatConnection.classList.toggle("offline", !connected);
+  chatConnection.hidden = connected;
+}
+
 function formatTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -56,6 +68,11 @@ function formatTime(value) {
 }
 
 function appendMessage(message) {
+  const emptyState = messageList.querySelector(".chat-empty");
+  if (emptyState) {
+    emptyState.remove();
+  }
+
   if (message.id <= lastMessageId) {
     return;
   }
@@ -86,11 +103,33 @@ function appendMessage(message) {
 
   meta.append(username, timestamp);
   item.append(meta, body);
+  for (const attachment of message.attachments || []) {
+    const link = document.createElement("a");
+    link.className = "message-attachment";
+    link.href = attachment.url;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.download = attachment.name;
+
+    if (attachment.contentType === "image/png") {
+      const image = document.createElement("img");
+      image.className = "message-image";
+      image.src = attachment.url;
+      image.alt = attachment.name;
+      link.append(image);
+    } else {
+      link.textContent = `📎 ${attachment.name}`;
+    }
+    item.append(link);
+  }
   messageList.append(item);
 
   lastMessageId = message.id;
   if (shouldScroll) {
     scrollToBottom();
+    newMessages.hidden = true;
+  } else {
+    newMessages.hidden = false;
   }
 }
 
@@ -112,12 +151,20 @@ async function loadMessages() {
     for (const message of data.messages || []) {
       appendMessage(message);
     }
+    if (lastMessageId === 0) {
+      const emptyState = messageList.querySelector(".chat-empty");
+      if (emptyState) {
+        emptyState.textContent = "No messages yet. Start the conversation.";
+      }
+    }
     if (typeof data.onlineCount === "number") {
       onlineCount.textContent = data.onlineCount;
     }
     clearError();
+    setConnection(true);
   } catch (error) {
-    showError(error.message);
+    setConnection(false);
+    showError("Could not load messages. Retrying soon.");
   } finally {
     polling = false;
   }
@@ -128,7 +175,9 @@ chatForm.addEventListener("submit", async (event) => {
   clearError();
 
   const message = messageInput.value.trim();
-  if (!message) {
+  const file = fileInput.files[0];
+  if (!message && !file) {
+    showError("Write a message or choose a file.");
     return;
   }
   if ([...message].length > 500) {
@@ -136,20 +185,28 @@ chatForm.addEventListener("submit", async (event) => {
     return;
   }
 
-  const button = chatForm.querySelector("button");
+  const button = chatForm.querySelector('button[type="submit"]');
   button.disabled = true;
 
   try {
+    const formData = new FormData();
+    formData.append("message", message);
+    if (file) {
+      formData.append("file", file);
+    }
+
     const response = await fetch("/chat/send", {
       method: "POST",
       headers: {
         "Accept": "application/json",
-        "Content-Type": "application/json",
       },
-      body: JSON.stringify({ message }),
+      body: formData,
     });
     if (!response.ok) {
-      throw new Error(await response.text());
+      if (response.status === 429) {
+        throw new Error("Please wait a moment before sending another message.");
+      }
+      throw new Error("Could not send message.");
     }
 
     const data = await response.json();
@@ -161,6 +218,9 @@ chatForm.addEventListener("submit", async (event) => {
       onlineCount.textContent = data.onlineCount;
     }
     messageInput.value = "";
+    fileInput.value = "";
+    fileName.textContent = "";
+    messageCounter.textContent = "0 / 500";
   } catch (error) {
     showError(error.message.trim() || "Could not send message.");
   } finally {
@@ -175,6 +235,23 @@ messageInput.addEventListener("keydown", (event) => {
     chatForm.requestSubmit();
   }
 });
+
+messageInput.addEventListener("input", () => {
+  messageCounter.textContent = `${[...messageInput.value].length} / 500`;
+});
+
+fileButton.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", () => {
+  fileName.textContent = fileInput.files[0]?.name || "";
+});
+
+messageList.addEventListener("scroll", () => {
+  if (nearBottom()) {
+    newMessages.hidden = true;
+  }
+});
+
+newMessages.addEventListener("click", scrollToBottom);
 
 loadMessages().then(scrollToBottom);
 setInterval(loadMessages, 2000);
