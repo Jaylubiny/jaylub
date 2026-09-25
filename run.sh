@@ -23,9 +23,10 @@ echo "Building full server..."
 go build -o "$BIN_PATH" ./cmd/server
 
 echo "Starting full server..."
-setsid "$BIN_PATH" > "$LOG_FILE" 2>&1 < /dev/null &
-SERVER_PID=$!
-echo "$SERVER_PID" > "$PID_FILE"
+#setsid "$BIN_PATH" > "$LOG_FILE" 2>&1 < /dev/null &
+#SERVER_PID=$!
+#echo "$SERVER_PID" > "$PID_FILE"
+exec "$BIN_PATH"
 
 echo "Server PID: $SERVER_PID"
 echo "PID file: $PID_FILE"
