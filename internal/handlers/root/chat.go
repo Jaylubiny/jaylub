@@ -21,13 +21,15 @@ import (
 
 const (
 	chatMaxMessageLength = 500
-	chatMaxFileSize      = 10 << 20
+	chatMaxFileSize      = 25 << 20
 	chatRecentLimit      = 100
 	chatRetention        = 30 * 24 * time.Hour
 	chatRateLimit        = 2 * time.Second
 	chatOnlineWindow     = 60 * time.Second
 	chatFilesDir         = "internal/database/files"
 )
+
+var errChatFileTooLarge = errors.New("Files must be 25 MB or smaller.")
 
 type ChatService struct {
 	db         *sql.DB
@@ -75,6 +77,7 @@ func parseChatSettings(r *http.Request) (auth.ChatSettings, error) {
 	settings.TimeFormat = r.FormValue("time_format")
 	settings.MessageDensity = r.FormValue("message_density")
 	settings.ShowTimestamps = r.FormValue("show_timestamps") == "on"
+	settings.ShowImagePreviews = r.FormValue("show_image_previews") == "on"
 
 	if settings.TimeFormat != "24h" && settings.TimeFormat != "12h" && settings.TimeFormat != "relative" {
 		return settings, errors.New("Invalid time format.")
@@ -212,7 +215,11 @@ func (s *ChatService) SendMessage(w http.ResponseWriter, r *http.Request) {
 		if err := saveChatUpload(tx, id, upload); err != nil {
 			_ = tx.Rollback()
 			s.releasePost(strconv.FormatInt(user.ID, 10))
-			http.Error(w, "Could not save the attachment.", http.StatusInternalServerError)
+			if errors.Is(err, errChatFileTooLarge) {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+			} else {
+				http.Error(w, "Could not save the attachment.", http.StatusInternalServerError)
+			}
 			return
 		}
 	}
@@ -323,7 +330,12 @@ func (s *ChatService) File(w http.ResponseWriter, r *http.Request) {
 
 	path := filepath.Join(chatFilesDir, filepath.Base(storedName))
 	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, safeDownloadName(originalName)))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	disposition := "attachment"
+	if contentType == "image/png" {
+		disposition = "inline"
+	}
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`%s; filename="%s"`, disposition, safeDownloadName(originalName)))
 	http.ServeFile(w, r, path)
 }
 
@@ -344,8 +356,8 @@ func parseChatSubmission(w http.ResponseWriter, r *http.Request) (string, *chatU
 		return payload.Message, nil, nil
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, chatMaxFileSize+2048)
-	if err := r.ParseMultipartForm(chatMaxFileSize + 2048); err != nil {
+	r.Body = http.MaxBytesReader(w, r.Body, chatMaxFileSize+(1<<20))
+	if err := r.ParseMultipartForm(chatMaxFileSize + (1 << 20)); err != nil {
 		return "", nil, errors.New("The message or file is too large.")
 	}
 	message := r.FormValue("message")
@@ -371,7 +383,7 @@ func parseChatSubmission(w http.ResponseWriter, r *http.Request) (string, *chatU
 		detectedType = "application/octet-stream"
 	}
 	if header.Size > chatMaxFileSize {
-		return "", nil, errors.New("Files must be 10 MB or smaller.")
+		return "", nil, errChatFileTooLarge
 	}
 	return message, &chatUpload{header: header, contentType: detectedType}, nil
 }
@@ -396,10 +408,16 @@ func saveChatUpload(tx *sql.Tx, messageID int64, upload *chatUpload) error {
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(target, io.LimitReader(source, chatMaxFileSize+1)); err != nil {
+	written, err := io.Copy(target, io.LimitReader(source, chatMaxFileSize+1))
+	if err != nil {
 		_ = target.Close()
 		_ = os.Remove(path)
 		return err
+	}
+	if written > chatMaxFileSize {
+		_ = target.Close()
+		_ = os.Remove(path)
+		return errChatFileTooLarge
 	}
 	if err := target.Close(); err != nil {
 		_ = os.Remove(path)

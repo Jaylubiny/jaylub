@@ -36,6 +36,8 @@ type JayliveProfile struct {
 	SelectedCharacter   string `json:"selectedCharacter"`
 	GoblinUnlocked      bool   `json:"goblinJaylubUnlocked"`
 	VampireUnlocked     bool   `json:"vampireJaylubUnlocked"`
+	BulvyUnlocked       bool   `json:"bulvyJaylubUnlocked"`
+	BulvyDamageLevel    int    `json:"bulvyDamageLevel"`
 	DamageLevel         int    `json:"damageLevel"`
 	PiercingLevel       int    `json:"piercingLevel"`
 	MaxHPLevel          int    `json:"maxHpLevel"`
@@ -137,7 +139,7 @@ func (s *JayliveService) BuyUpgrade(w http.ResponseWriter, r *http.Request) {
 	}
 
 	profile, err := scanJayliveProfile(tx.QueryRow(`
-		SELECT username, gold, lifetime_kills, selected_character, goblin_jaylub_unlocked, vampire_jaylub_unlocked, damage_level, piercing_level, max_hp_level, attack_speed_level, move_speed_level, ability_damage_level, aura_damage_level, football_damage_level, bike_damage_level, pigeon_damage_level, game_level, game_xp
+		SELECT username, gold, lifetime_kills, selected_character, goblin_jaylub_unlocked, vampire_jaylub_unlocked, bulvy_jaylub_unlocked, bulvy_damage_level, damage_level, piercing_level, max_hp_level, attack_speed_level, move_speed_level, ability_damage_level, aura_damage_level, football_damage_level, bike_damage_level, pigeon_damage_level, game_level, game_xp
 		FROM game_profiles
 		WHERE user_id = ?
 	`, user.ID))
@@ -147,6 +149,16 @@ func (s *JayliveService) BuyUpgrade(w http.ResponseWriter, r *http.Request) {
 	}
 
 	level := upgradeLevel(profile, upgrade)
+	if upgrade == "bulvyDamage" {
+		if !profile.BulvyUnlocked {
+			http.Error(w, "Bulvy Jaylub is locked.", http.StatusBadRequest)
+			return
+		}
+		if level >= 3 {
+			http.Error(w, "Bulvy Damage is already maxed.", http.StatusBadRequest)
+			return
+		}
+	}
 	if upgrade == "piercing" && !profile.GoblinUnlocked {
 		http.Error(w, "Goblin Jaylub is locked.", http.StatusBadRequest)
 		return
@@ -158,6 +170,8 @@ func (s *JayliveService) BuyUpgrade(w http.ResponseWriter, r *http.Request) {
 	cost := upgradeCost(level)
 	if isAbilityDamageUpgrade(upgrade) {
 		cost = abilityDamageUpgradeCost(upgrade, level)
+	} else if upgrade == "bulvyDamage" {
+		cost = bulvyDamageUpgradeCost(level)
 	}
 	if profile.Gold < cost {
 		http.Error(w, "Not enough gold.", http.StatusBadRequest)
@@ -224,7 +238,7 @@ func (s *JayliveService) Character(w http.ResponseWriter, r *http.Request) {
 	}
 
 	profile, err := scanJayliveProfile(tx.QueryRow(`
-		SELECT username, gold, lifetime_kills, selected_character, goblin_jaylub_unlocked, vampire_jaylub_unlocked, damage_level, piercing_level, max_hp_level, attack_speed_level, move_speed_level, ability_damage_level, aura_damage_level, football_damage_level, bike_damage_level, pigeon_damage_level, game_level, game_xp
+		SELECT username, gold, lifetime_kills, selected_character, goblin_jaylub_unlocked, vampire_jaylub_unlocked, bulvy_jaylub_unlocked, bulvy_damage_level, damage_level, piercing_level, max_hp_level, attack_speed_level, move_speed_level, ability_damage_level, aura_damage_level, football_damage_level, bike_damage_level, pigeon_damage_level, game_level, game_xp
 		FROM game_profiles
 		WHERE user_id = ?
 	`, user.ID))
@@ -235,7 +249,7 @@ func (s *JayliveService) Character(w http.ResponseWriter, r *http.Request) {
 
 	switch payload.Action {
 	case "buy":
-		if payload.Character != "goblin_jaylub" && payload.Character != "character3" {
+		if payload.Character != "goblin_jaylub" && payload.Character != "character3" && payload.Character != "bulvy_jaylub" {
 			http.Error(w, "Unknown character.", http.StatusBadRequest)
 			return
 		}
@@ -245,11 +259,17 @@ func (s *JayliveService) Character(w http.ResponseWriter, r *http.Request) {
 		if payload.Character == "character3" && profile.VampireUnlocked {
 			break
 		}
+		if payload.Character == "bulvy_jaylub" && profile.BulvyUnlocked {
+			break
+		}
 		cost := 100
 		column := "goblin_jaylub_unlocked"
 		if payload.Character == "character3" {
 			cost = 300
 			column = "vampire_jaylub_unlocked"
+		} else if payload.Character == "bulvy_jaylub" {
+			cost = 600
+			column = "bulvy_jaylub_unlocked"
 		}
 		if profile.Gold < cost {
 			http.Error(w, "Not enough gold.", http.StatusBadRequest)
@@ -261,7 +281,7 @@ func (s *JayliveService) Character(w http.ResponseWriter, r *http.Request) {
 			WHERE user_id = ?
 		`, cost, payload.Character, user.Username, time.Now().UTC().Format(time.RFC3339), user.ID)
 	case "select":
-		if payload.Character != "jaylub" && payload.Character != "goblin_jaylub" && payload.Character != "character3" {
+		if payload.Character != "jaylub" && payload.Character != "goblin_jaylub" && payload.Character != "character3" && payload.Character != "bulvy_jaylub" {
 			http.Error(w, "Unknown character.", http.StatusBadRequest)
 			return
 		}
@@ -270,6 +290,10 @@ func (s *JayliveService) Character(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if payload.Character == "character3" && !profile.VampireUnlocked {
+			http.Error(w, "Character is locked.", http.StatusBadRequest)
+			return
+		}
+		if payload.Character == "bulvy_jaylub" && !profile.BulvyUnlocked {
 			http.Error(w, "Character is locked.", http.StatusBadRequest)
 			return
 		}
@@ -514,7 +538,7 @@ func (s *JayliveService) profile(r *http.Request) (JayliveProfile, error) {
 		return JayliveProfile{}, err
 	}
 	return scanJayliveProfile(s.db.QueryRow(`
-		SELECT username, gold, lifetime_kills, selected_character, goblin_jaylub_unlocked, vampire_jaylub_unlocked, damage_level, piercing_level, max_hp_level, attack_speed_level, move_speed_level, ability_damage_level, aura_damage_level, football_damage_level, bike_damage_level, pigeon_damage_level, game_level, game_xp
+		SELECT username, gold, lifetime_kills, selected_character, goblin_jaylub_unlocked, vampire_jaylub_unlocked, bulvy_jaylub_unlocked, bulvy_damage_level, damage_level, piercing_level, max_hp_level, attack_speed_level, move_speed_level, ability_damage_level, aura_damage_level, football_damage_level, bike_damage_level, pigeon_damage_level, game_level, game_xp
 		FROM game_profiles
 		WHERE user_id = ?
 	`, user.ID))
@@ -638,6 +662,7 @@ func scanJayliveProfile(row interface{ Scan(dest ...any) error }) (JayliveProfil
 	var profile JayliveProfile
 	var goblinUnlocked int
 	var vampireUnlocked int
+	var bulvyUnlocked int
 	err := row.Scan(
 		&profile.Username,
 		&profile.Gold,
@@ -645,6 +670,8 @@ func scanJayliveProfile(row interface{ Scan(dest ...any) error }) (JayliveProfil
 		&profile.SelectedCharacter,
 		&goblinUnlocked,
 		&vampireUnlocked,
+		&bulvyUnlocked,
+		&profile.BulvyDamageLevel,
 		&profile.DamageLevel,
 		&profile.PiercingLevel,
 		&profile.MaxHPLevel,
@@ -660,10 +687,14 @@ func scanJayliveProfile(row interface{ Scan(dest ...any) error }) (JayliveProfil
 	)
 	profile.GoblinUnlocked = goblinUnlocked == 1
 	profile.VampireUnlocked = vampireUnlocked == 1
+	profile.BulvyUnlocked = bulvyUnlocked == 1
 	if profile.SelectedCharacter == "goblin_jaylub" && !profile.GoblinUnlocked {
 		profile.SelectedCharacter = "jaylub"
 	}
 	if profile.SelectedCharacter == "character3" && !profile.VampireUnlocked {
+		profile.SelectedCharacter = "jaylub"
+	}
+	if profile.SelectedCharacter == "bulvy_jaylub" && !profile.BulvyUnlocked {
 		profile.SelectedCharacter = "jaylub"
 	}
 	return profile, err
@@ -691,6 +722,8 @@ func upgradeColumn(upgrade string) (string, error) {
 		return "bike_damage_level", nil
 	case "pigeonDamage":
 		return "pigeon_damage_level", nil
+	case "bulvyDamage":
+		return "bulvy_damage_level", nil
 	default:
 		return "", errors.New("Unknown upgrade.")
 	}
@@ -718,6 +751,8 @@ func upgradeLevel(profile JayliveProfile, upgrade string) int {
 		return profile.BikeDamageLevel
 	case "pigeonDamage":
 		return profile.PigeonDamageLevel
+	case "bulvyDamage":
+		return profile.BulvyDamageLevel
 	default:
 		return 0
 	}
@@ -740,6 +775,13 @@ func abilityDamageUpgradeCost(upgrade string, level int) int {
 		base, step, curve = 700, 330, 160
 	}
 	return base + level*step + level*level*curve
+}
+
+func bulvyDamageUpgradeCost(level int) int {
+	if level >= 3 {
+		return 0
+	}
+	return []int{500, 900, 1500}[level]
 }
 
 func isAbilityDamageUpgrade(upgrade string) bool {
@@ -787,6 +829,11 @@ func shopState(profile JayliveProfile) map[string]map[string]int {
 		"pigeonDamage": {
 			"level": profile.PigeonDamageLevel,
 			"cost":  abilityDamageUpgradeCost("pigeonDamage", profile.PigeonDamageLevel),
+		},
+		"bulvyDamage": {
+			"level": profile.BulvyDamageLevel,
+			"cost":  bulvyDamageUpgradeCost(profile.BulvyDamageLevel),
+			"max":   3,
 		},
 		"piercing": {
 			"level": profile.PiercingLevel,

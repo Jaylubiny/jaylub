@@ -92,15 +92,16 @@ func (r *Renderer) chatSettings(user auth.User) (auth.ChatSettings, error) {
 	}
 
 	settings := auth.DefaultChatSettings()
-	var showTimestamps int
+	var showTimestamps, showImagePreviews int
 	err := r.db.QueryRow(`
-		SELECT time_format, message_density, show_timestamps
+		SELECT time_format, message_density, show_timestamps, show_image_previews
 		FROM chat_settings
 		WHERE user_id = ?
 	`, user.ID).Scan(
 		&settings.TimeFormat,
 		&settings.MessageDensity,
 		&showTimestamps,
+		&showImagePreviews,
 	)
 	if err == sql.ErrNoRows {
 		return settings, nil
@@ -109,6 +110,7 @@ func (r *Renderer) chatSettings(user auth.User) (auth.ChatSettings, error) {
 		return settings, err
 	}
 	settings.ShowTimestamps = showTimestamps != 0
+	settings.ShowImagePreviews = showImagePreviews != 0
 	return settings, nil
 }
 

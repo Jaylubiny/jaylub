@@ -6,7 +6,7 @@
 <section class="settings-page">
     <header class="settings-header">
         <p class="eyebrow">Profile settings</p>
-        <h1>Chat settings</h1>
+        <h1>Settings</h1>
         <p>Make the global chat feel more like yours. These preferences are saved to your account.</p>
     </header>
 
@@ -37,6 +37,10 @@
             <label class="checkbox-row">
                 <input type="checkbox" name="show_timestamps" {{if .ChatSettings.ShowTimestamps}}checked{{end}}>
                 <span>Show timestamps on messages</span>
+            </label>
+            <label class="checkbox-row">
+                <input type="checkbox" name="show_image_previews" {{if .ChatSettings.ShowImagePreviews}}checked{{end}}>
+                <span>Show PNG image previews in chat</span>
             </label>
         </fieldset>
 

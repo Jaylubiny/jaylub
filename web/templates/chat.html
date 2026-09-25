@@ -1,11 +1,11 @@
 {{define "head"}}
-<link rel="stylesheet" href="/web/static/css/chat.css?v=chat-2">
-<script src="/web/static/js/chat.js?v=chat-2" defer></script>
+<link rel="stylesheet" href="/web/static/css/chat.css?v=chat-6">
+<script src="/web/static/js/chat.js?v=chat-6" defer></script>
 {{end}}
 
 {{define "content"}}
 
-<section class="chat-page" data-current-user="{{.Username}}" data-time-format="{{.ChatSettings.TimeFormat}}" data-message-density="{{.ChatSettings.MessageDensity}}" data-show-timestamps="{{.ChatSettings.ShowTimestamps}}">
+<section class="chat-page" data-current-user="{{.Username}}" data-time-format="{{.ChatSettings.TimeFormat}}" data-message-density="{{.ChatSettings.MessageDensity}}" data-show-timestamps="{{.ChatSettings.ShowTimestamps}}" data-show-image-previews="{{.ChatSettings.ShowImagePreviews}}">
     <header class="chat-header">
         <div>
             <h1>Chat</h1>
@@ -27,10 +27,12 @@
     <button id="new-messages" class="new-messages" type="button" hidden>New messages</button>
 
     <form id="chat-form" class="chat-form" autocomplete="off">
-        <textarea id="message-input" name="message" maxlength="500" rows="2" placeholder="Message" aria-label="Message"></textarea>
+        <div class="chat-input-area">
+            <textarea id="message-input" name="message" maxlength="500" rows="2" placeholder="Message" aria-label="Message"></textarea>
+            <span id="message-counter" class="message-counter" aria-live="polite">0 / 500</span>
+        </div>
         <input id="file-input" name="file" type="file" hidden>
         <div class="chat-compose">
-            <span id="message-counter" class="message-counter" aria-live="polite">0 / 500</span>
             <div class="chat-actions">
                 <button id="file-button" class="file-button" type="button" aria-label="Attach a file" title="Attach a file">+</button>
                 <button type="submit">Send</button>

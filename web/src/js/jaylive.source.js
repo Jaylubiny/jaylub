@@ -45,6 +45,8 @@
   goblinImage.src = "/static/img/character2.png";
   const character3Image = new Image();
   character3Image.src = "/static/img/character3.png";
+  const bulvyImage = new Image();
+  bulvyImage.src = "/static/img/character4.png";
   const enemyImage = new Image();
   enemyImage.src = "/static/img/enemy.png";
   const enemy2Image = new Image();
@@ -242,6 +244,14 @@
         unlocked: Boolean(profile.vampireJaylubUnlocked),
         cost: 300,
       },
+      {
+        id: "bulvy_jaylub",
+        name: "Bulvy Jaylub",
+        image: "/static/img/character4.png",
+        detail: "Shoots two lasers",
+        unlocked: Boolean(profile.bulvyJaylubUnlocked),
+        cost: 600,
+      },
     ];
 
     ui.characterList.textContent = "";
@@ -335,6 +345,9 @@
     ];
     if (state.profile?.selectedCharacter === "goblin_jaylub") {
       upgrades.push(["piercing", "Piercing", "Goblin projectiles pass through more enemies"]);
+    }
+    if (state.profile?.selectedCharacter === "bulvy_jaylub" && state.profile?.bulvyJaylubUnlocked) {
+      upgrades.push(["bulvyDamage", "Bulvy Damage", "Bulvy lasers deal up to 3x damage"]);
     }
     return upgrades;
   }
@@ -560,6 +573,10 @@
 
   function characterAttackDelay(character) {
     return character === "character3" ? 1.18 : 1;
+  }
+
+  function bulvyDamageMultiplier() {
+    return [1, 2, 2.5, 3][state.profile?.bulvyDamageLevel || 0];
   }
 
   function levelRequirement(level) {
@@ -1261,6 +1278,10 @@
       shootVampireKnife();
       return true;
     }
+    if (player.character === "bulvy_jaylub") {
+      shootBulvyLasers();
+      return true;
+    }
 
     player.attackCount++;
     const strong = player.attackCount % 3 === 0;
@@ -1352,10 +1373,33 @@
     state.shake = Math.max(state.shake, 2);
   }
 
+  function shootBulvyLasers() {
+    const speed = 820;
+    const spread = Math.PI / 18;
+    const damage = Math.max(1, Math.ceil(player.damage * bulvyDamageMultiplier()));
+    for (const angle of [player.angle - spread, player.angle + spread]) {
+      projectiles.push({
+        x: player.x + Math.cos(angle) * 34,
+        y: player.y + Math.sin(angle) * 34,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        r: 7,
+        damage,
+        pierceLeft: 0,
+        hitEnemyIds: new Set(),
+        life: 1.15,
+        angle,
+        kind: "bulvyLaser",
+      });
+    }
+    state.shake = Math.max(state.shake, 3);
+  }
+
   function projectileColor(projectile) {
     if (projectile.kind === "bike") return "#5992a7";
     if (projectile.kind === "pigeon") return "#d5a43a";
     if (projectile.kind === "vampireKnife") return "#d95b4d";
+    if (projectile.kind === "bulvyLaser") return "#67e8f9";
     return "#7fb069";
   }
 
@@ -1549,7 +1593,7 @@
     if (image.complete && image.naturalWidth) {
       ctx.drawImage(image, -28, -28, 56, 56);
     } else {
-      ctx.fillStyle = player.character === "goblin_jaylub" ? "#7fb069" : player.character === "character3" ? "#d95b4d" : "#d5a43a";
+      ctx.fillStyle = player.character === "goblin_jaylub" ? "#7fb069" : player.character === "character3" ? "#d95b4d" : player.character === "bulvy_jaylub" ? "#67e8f9" : "#d5a43a";
       ctx.fillRect(-24, -24, 48, 48);
     }
     ctx.fillStyle = "#e7dfc9";
@@ -1560,6 +1604,7 @@
   function playerImageForCharacter(character) {
     if (character === "goblin_jaylub") return goblinImage;
     if (character === "character3") return character3Image;
+    if (character === "bulvy_jaylub") return bulvyImage;
     return playerImage;
   }
 
@@ -1641,6 +1686,11 @@
       ctx.fillRect(-12, -3, 20, 6);
       ctx.fillStyle = "#f1ead7";
       ctx.fillRect(6, -2, 12, 4);
+    } else if (projectile.kind === "bulvyLaser") {
+      ctx.fillStyle = "#67e8f9";
+      ctx.shadowColor = "#67e8f9";
+      ctx.shadowBlur = 12;
+      ctx.fillRect(-18, -3, 36, 6);
     } else {
       ctx.fillStyle = "#0a0d0e";
       ctx.fillRect(-8, -8, 20, 16);

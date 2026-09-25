@@ -15,6 +15,7 @@ const currentUser = chatPage?.dataset.currentUser || "";
 const timeFormat = chatPage?.dataset.timeFormat || "24h";
 const messageDensity = chatPage?.dataset.messageDensity || "comfortable";
 const showTimestamps = chatPage?.dataset.showTimestamps !== "false";
+const showImagePreviews = chatPage?.dataset.showImagePreviews !== "false";
 let lastMessageId = 0;
 let polling = false;
 
@@ -111,7 +112,7 @@ function appendMessage(message) {
     link.rel = "noopener";
     link.download = attachment.name;
 
-    if (attachment.contentType === "image/png") {
+    if (attachment.contentType?.split(";", 1)[0].toLowerCase() === "image/png" && showImagePreviews) {
       const image = document.createElement("img");
       image.className = "message-image";
       image.src = attachment.url;

@@ -35,9 +35,10 @@ type User struct {
 }
 
 type ChatSettings struct {
-	TimeFormat     string
-	MessageDensity string
-	ShowTimestamps bool
+	TimeFormat        string
+	MessageDensity    string
+	ShowTimestamps    bool
+	ShowImagePreviews bool
 }
 
 type Service struct {
@@ -77,23 +78,25 @@ func (s *Service) DB() *sql.DB {
 
 func DefaultChatSettings() ChatSettings {
 	return ChatSettings{
-		TimeFormat:     "24h",
-		MessageDensity: "comfortable",
-		ShowTimestamps: true,
+		TimeFormat:        "24h",
+		MessageDensity:    "comfortable",
+		ShowTimestamps:    true,
+		ShowImagePreviews: true,
 	}
 }
 
 func (s *Service) ChatSettings(userID int64) (ChatSettings, error) {
 	settings := DefaultChatSettings()
-	var showTimestamps int
+	var showTimestamps, showImagePreviews int
 	err := s.db.QueryRow(`
-		SELECT time_format, message_density, show_timestamps
+		SELECT time_format, message_density, show_timestamps, show_image_previews
 		FROM chat_settings
 		WHERE user_id = ?
 	`, userID).Scan(
 		&settings.TimeFormat,
 		&settings.MessageDensity,
 		&showTimestamps,
+		&showImagePreviews,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		_, err = s.db.Exec(`INSERT INTO chat_settings (user_id) VALUES (?)`, userID)
@@ -103,18 +106,20 @@ func (s *Service) ChatSettings(userID int64) (ChatSettings, error) {
 		return settings, err
 	}
 	settings.ShowTimestamps = showTimestamps != 0
+	settings.ShowImagePreviews = showImagePreviews != 0
 	return settings, nil
 }
 
 func (s *Service) SaveChatSettings(userID int64, settings ChatSettings) error {
 	_, err := s.db.Exec(`
-		INSERT INTO chat_settings (user_id, time_format, message_density, show_timestamps)
-		VALUES (?, ?, ?, ?)
+		INSERT INTO chat_settings (user_id, time_format, message_density, show_timestamps, show_image_previews)
+		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(user_id) DO UPDATE SET
 			time_format = excluded.time_format,
 			message_density = excluded.message_density,
-			show_timestamps = excluded.show_timestamps
-	`, userID, settings.TimeFormat, settings.MessageDensity, settings.ShowTimestamps)
+			show_timestamps = excluded.show_timestamps,
+			show_image_previews = excluded.show_image_previews
+	`, userID, settings.TimeFormat, settings.MessageDensity, settings.ShowTimestamps, settings.ShowImagePreviews)
 	return err
 }
 
@@ -169,6 +174,7 @@ func (s *Service) initSchema() error {
 			time_format TEXT NOT NULL DEFAULT '24h',
 			message_density TEXT NOT NULL DEFAULT 'comfortable',
 			show_timestamps INTEGER NOT NULL DEFAULT 1,
+			show_image_previews INTEGER NOT NULL DEFAULT 1,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		);
 
@@ -180,6 +186,8 @@ func (s *Service) initSchema() error {
 			selected_character TEXT NOT NULL DEFAULT 'jaylub',
 			goblin_jaylub_unlocked INTEGER NOT NULL DEFAULT 0,
 			vampire_jaylub_unlocked INTEGER NOT NULL DEFAULT 0,
+			bulvy_jaylub_unlocked INTEGER NOT NULL DEFAULT 0,
+			bulvy_damage_level INTEGER NOT NULL DEFAULT 0,
 			damage_level INTEGER NOT NULL DEFAULT 0,
 			max_hp_level INTEGER NOT NULL DEFAULT 0,
 			attack_speed_level INTEGER NOT NULL DEFAULT 0,
@@ -212,6 +220,9 @@ func (s *Service) initSchema() error {
 	if err != nil {
 		return err
 	}
+	if err := s.addColumnIfMissing("chat_settings", "show_image_previews", "INTEGER NOT NULL DEFAULT 1"); err != nil {
+		return err
+	}
 	if err := s.addColumnIfMissing("game_leaderboard", "best_run_kills", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
@@ -222,6 +233,12 @@ func (s *Service) initSchema() error {
 		return err
 	}
 	if err := s.addColumnIfMissing("game_profiles", "vampire_jaylub_unlocked", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("game_profiles", "bulvy_jaylub_unlocked", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing("game_profiles", "bulvy_damage_level", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
 	if err := s.addColumnIfMissing("game_profiles", "piercing_level", "INTEGER NOT NULL DEFAULT 0"); err != nil {

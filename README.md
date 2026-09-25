@@ -24,23 +24,42 @@ LATER ^
 
 WORKING ON ^
 
-.com/wiki
-.com/wiki/jaylub
-.com/wiki/C
-.com/pages/allah
-.com/pages/jaylub
-.com/about
-.com/contact
-.com/discord
-.com/pages/nullc
-.com/pages/NullOS
-.com/discord/allah/callback
-.com/pages/jayware
-.com/pages/jayware/download
-.com/
-.com/docs
-.com/pages/services
-.com/pages
+/
+/login
+/logout
+/me
+/settings
+/contacts
+/docs
+/documentation
+/game/test
+/game/jaylive
+/game/jaylive/state
+/game/jaylive/start
+/game/jaylive/shop
+/game/jaylive/character
+/game/jaylive/run
+/game/jaylive/leaderboard
+/wiki
+/wiki/C
+/wiki/jaylub
+/pages
+/pages/jayware
+/pages/jayware/download
+/pages/jayos
+/pages/nullc
+/pages/allah
+/pages/jaylub
+/pages/services
+/discord
+/discord/allah/callback
+/.well-known/discord
+/chat
+/chat/messages
+/chat/send
+/chat/files/<attachment-id>
+/static/<file>
+/web/static/<file>
 
 DONE ^
 
