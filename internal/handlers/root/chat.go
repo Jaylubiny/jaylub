@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,6 +23,7 @@ import (
 const (
 	chatMaxMessageLength = 500
 	chatMaxFileSize      = 25 << 20
+	chatMultipartMemory  = 1 << 20
 	chatRecentLimit      = 100
 	chatRetention        = 30 * 24 * time.Hour
 	chatCleanupInterval  = 10 * time.Minute
@@ -156,9 +158,11 @@ func (s *ChatService) Messages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	onlineUsers := s.onlineUsers()
 	s.writeJSON(w, map[string]any{
 		"messages":    messages,
-		"onlineCount": s.onlineCount(),
+		"onlineCount": len(onlineUsers),
+		"onlineUsers": onlineUsers,
 	})
 }
 
@@ -257,6 +261,7 @@ func (s *ChatService) SendMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
+	onlineUsers := s.onlineUsers()
 	s.writeJSON(w, map[string]any{
 		"message": ChatMessage{
 			ID:          id,
@@ -265,7 +270,8 @@ func (s *ChatService) SendMessage(w http.ResponseWriter, r *http.Request) {
 			Timestamp:   now.Format(time.RFC3339),
 			Attachments: sentMessages[0].Attachments,
 		},
-		"onlineCount": s.onlineCount(),
+		"onlineCount": len(onlineUsers),
+		"onlineUsers": onlineUsers,
 	})
 }
 
@@ -546,7 +552,7 @@ func parseChatSubmission(w http.ResponseWriter, r *http.Request) (string, *chatU
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, chatMaxFileSize+(1<<20))
-	if err := r.ParseMultipartForm(chatMaxFileSize + (1 << 20)); err != nil {
+	if err := r.ParseMultipartForm(chatMultipartMemory); err != nil {
 		return "", nil, errors.New("The message or file is too large.")
 	}
 	message := r.FormValue("message")
@@ -671,20 +677,21 @@ func (s *ChatService) markRead(r *http.Request) {
 	`, user.ID, time.Now().UTC().Format(time.RFC3339))
 }
 
-func (s *ChatService) onlineCount() int {
+func (s *ChatService) onlineUsers() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	now := time.Now()
-	count := 0
+	users := make([]string, 0, len(s.lastActive))
 	for username, lastSeen := range s.lastActive {
 		if now.Sub(lastSeen) <= chatOnlineWindow {
-			count++
+			users = append(users, username)
 			continue
 		}
 		delete(s.lastActive, username)
 	}
-	return count
+	sort.Strings(users)
+	return users
 }
 
 func (s *ChatService) allowPost(userKey string) bool {

@@ -85,6 +85,7 @@
       p.hp += gain;
     } },
     { id: "moveSpeed", name: "+3% Move Speed", color: "#5992a7", apply: (p) => { p.runSpeedMult += 0.03; } },
+    { id: "magnet", name: "Magnet: coin sweep", color: "#66d9ef", apply: (p) => { p.magnetTimer = 2; } },
   ];
 
   const keys = new Set();
@@ -500,6 +501,7 @@
       runSpeedMult: 1,
       runAttackSpeedMult: 1,
       runMaxHpBonus: 0,
+      magnetTimer: 0,
       runItems: {
         aura: 0,
         football: 0,
@@ -1136,9 +1138,21 @@
       }
     }
 
+    const magnetTime = player.magnetTimer;
+    const magnetStep = Math.min(dt, magnetTime);
     for (let i = goldDrops.length - 1; i >= 0; i--) {
       const drop = goldDrops[i];
       drop.life += dt;
+      if (magnetTime > 0) {
+        const dx = player.x - drop.x;
+        const dy = player.y - drop.y;
+        const distance = Math.hypot(dx, dy);
+        if (distance > 0) {
+          const travel = Math.min(distance, distance * magnetStep / magnetTime);
+          drop.x += (dx / distance) * travel;
+          drop.y += (dy / distance) * travel;
+        }
+      }
       if (circlesOverlap(player.x, player.y, player.r, drop.x, drop.y, 18)) {
         player.runGold += drop.value;
         burst(drop.x, drop.y, "#d5a43a", 10);
@@ -1146,6 +1160,7 @@
         goldDrops.splice(i, 1);
       }
     }
+    player.magnetTimer = Math.max(0, magnetTime - dt);
 
     for (let i = healDrops.length - 1; i >= 0; i--) {
       const drop = healDrops[i];
@@ -1565,6 +1580,7 @@
     for (const projectile of bossProjectiles) if (isCircleVisible(projectile.x, projectile.y, 32)) drawBossProjectile(projectile);
     if (player) {
       drawPlayer();
+      drawMagnet();
       drawFootball();
       for (const slash of slashes) if (isCircleVisible(slash.x, slash.y, slash.reach || 105)) drawSlash(slash);
       for (const projectile of projectiles) if (isCircleVisible(projectile.x, projectile.y, 42)) drawProjectile(projectile);
@@ -1598,6 +1614,27 @@
     }
     ctx.fillStyle = "#e7dfc9";
     ctx.fillRect(18, -4, 18, 8);
+    ctx.restore();
+  }
+
+  function drawMagnet() {
+    if (!player?.magnetTimer) return;
+    const pulse = Math.sin(performance.now() / 180) * 1.5;
+    const x = Math.round(player.x);
+    const y = Math.round(player.y - 40);
+    ctx.save();
+    ctx.lineWidth = 6;
+    ctx.lineCap = "square";
+    ctx.strokeStyle = "#66d9ef";
+    ctx.beginPath();
+    ctx.moveTo(x - 9, y - 8);
+    ctx.lineTo(x - 9, y + pulse);
+    ctx.quadraticCurveTo(x, y + 12 + pulse, x + 9, y + pulse);
+    ctx.lineTo(x + 9, y - 8);
+    ctx.stroke();
+    ctx.fillStyle = "#f1ead7";
+    ctx.fillRect(x - 13, y - 12, 8, 5);
+    ctx.fillRect(x + 5, y - 12, 8, 5);
     ctx.restore();
   }
 

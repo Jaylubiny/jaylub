@@ -1,7 +1,11 @@
 package handlers
 
 import (
+	"bytes"
 	"errors"
+	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +13,45 @@ import (
 
 	"jaylub/internal/auth"
 )
+
+func TestParseChatSubmissionSpillsLargeUploadToDisk(t *testing.T) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("message", "attachment"); err != nil {
+		t.Fatalf("write message field: %v", err)
+	}
+	fileWriter, err := writer.CreateFormFile("file", "large.bin")
+	if err != nil {
+		t.Fatalf("create file part: %v", err)
+	}
+	if _, err := fileWriter.Write(make([]byte, chatMultipartMemory+1)); err != nil {
+		t.Fatalf("write file part: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/chat/send", &body)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	response := httptest.NewRecorder()
+	message, upload, err := parseChatSubmission(response, request)
+	if err != nil {
+		t.Fatalf("parse multipart submission: %v", err)
+	}
+	if message != "attachment" || upload == nil {
+		t.Fatalf("parsed submission = (%q, %#v), want message and attachment", message, upload)
+	}
+	defer request.MultipartForm.RemoveAll()
+
+	file, err := upload.header.Open()
+	if err != nil {
+		t.Fatalf("open parsed attachment: %v", err)
+	}
+	defer file.Close()
+	if _, ok := file.(*os.File); !ok {
+		t.Fatalf("large attachment is held in memory (%T); want a temporary file", file)
+	}
+}
 
 func TestValidateChatMessage(t *testing.T) {
 	t.Parallel()
@@ -34,6 +77,24 @@ func TestValidateChatMessage(t *testing.T) {
 				t.Fatalf("validateChatMessage() = %q, want %q", got, test.want)
 			}
 		})
+	}
+}
+
+func TestOnlineUsersReturnsActiveUsersAndExpiresInactiveUsers(t *testing.T) {
+	chat := NewChatService(nil)
+	now := time.Now()
+	chat.lastActive = map[string]time.Time{
+		"bravo": now.Add(-time.Second),
+		"alpha": now.Add(-chatOnlineWindow + time.Second),
+		"stale": now.Add(-chatOnlineWindow - time.Second),
+	}
+
+	users := chat.onlineUsers()
+	if len(users) != 2 || users[0] != "alpha" || users[1] != "bravo" {
+		t.Fatalf("onlineUsers() = %v, want sorted active users [alpha bravo]", users)
+	}
+	if _, ok := chat.lastActive["stale"]; ok {
+		t.Fatal("onlineUsers() did not remove stale user")
 	}
 }
 

@@ -506,7 +506,7 @@ func (s *Service) sessionCookie(r *http.Request, value string, expires time.Time
 		Domain:   cookieDomain(r.Host),
 		Expires:  expires,
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   r.TLS != nil || cookieDomain(r.Host) != "",
 		SameSite: http.SameSiteLaxMode,
 	}
 }

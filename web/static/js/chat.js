@@ -3,6 +3,7 @@ const messageList = document.getElementById("message-list");
 const chatForm = document.getElementById("chat-form");
 const messageInput = document.getElementById("message-input");
 const onlineCount = document.getElementById("online-count");
+const onlineUsersTooltip = document.getElementById("online-users-tooltip");
 const chatError = document.getElementById("chat-error");
 const chatConnection = document.getElementById("chat-connection");
 const newMessages = document.getElementById("new-messages");
@@ -39,6 +40,27 @@ function showError(message) {
 function clearError() {
   chatError.textContent = "";
   chatError.hidden = true;
+}
+
+function updateOnlineUsers(users) {
+  if (!Array.isArray(users)) return;
+
+  onlineUsersTooltip.replaceChildren();
+  if (users.length === 0) {
+    const empty = document.createElement("span");
+    empty.className = "online-users-empty";
+    empty.textContent = "No users online";
+    onlineUsersTooltip.append(empty);
+    return;
+  }
+
+  const list = document.createElement("ul");
+  for (const username of users) {
+    const item = document.createElement("li");
+    item.textContent = username;
+    list.append(item);
+  }
+  onlineUsersTooltip.append(list);
 }
 
 function setConnection(connected) {
@@ -161,6 +183,7 @@ async function loadMessages() {
     if (typeof data.onlineCount === "number") {
       onlineCount.textContent = data.onlineCount;
     }
+    updateOnlineUsers(data.onlineUsers);
     clearError();
     setConnection(true);
   } catch (error) {
@@ -218,6 +241,7 @@ chatForm.addEventListener("submit", async (event) => {
     if (typeof data.onlineCount === "number") {
       onlineCount.textContent = data.onlineCount;
     }
+    updateOnlineUsers(data.onlineUsers);
     messageInput.value = "";
     fileInput.value = "";
     fileName.textContent = "";

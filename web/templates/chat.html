@@ -1,6 +1,6 @@
 {{define "head"}}
-<link rel="stylesheet" href="/web/static/css/chat.css?v=chat-6">
-<script src="/web/static/js/chat.js?v=chat-6" defer></script>
+<link rel="stylesheet" href="/web/static/css/chat.css?v=chat-7">
+<script src="/web/static/js/chat.js?v=chat-7" defer></script>
 {{end}}
 
 {{define "content"}}
@@ -11,10 +11,13 @@
             <h1>Chat</h1>
             <p>Global room for logged-in Jaylub users. Messages update automatically.</p>
         </div>
-        <div class="chat-status" aria-label="Online users">
+        <div class="chat-status" aria-label="Online users" tabindex="0" aria-describedby="online-users-tooltip">
             <span class="chat-status-dot" aria-hidden="true"></span>
             <span id="online-count">0</span>
             <span>online</span>
+            <div id="online-users-tooltip" class="online-users-tooltip" role="tooltip">
+                <span class="online-users-empty">No users online</span>
+            </div>
         </div>
     </header>
 

@@ -79,6 +79,58 @@ func TestMiddlewareAllowsPublicHomeButKeepsApplicationProtected(t *testing.T) {
 	}
 }
 
+func TestSessionCookieSecureForHTTPSAndProductionDomain(t *testing.T) {
+	service := &Service{}
+
+	tests := []struct {
+		name       string
+		requestURL string
+		host       string
+		forwarded  string
+		wantSecure bool
+	}{
+		{
+			name:       "local HTTP",
+			requestURL: "http://jaylub.local/login",
+			host:       "jaylub.local",
+			wantSecure: false,
+		},
+		{
+			name:       "production host behind TLS proxy",
+			requestURL: "http://jaylub.com/login",
+			host:       "jaylub.com",
+			wantSecure: true,
+		},
+		{
+			name:       "direct HTTPS",
+			requestURL: "https://jaylub.local/login",
+			host:       "jaylub.local",
+			wantSecure: true,
+		},
+		{
+			name:       "does not trust forwarded protocol from arbitrary clients",
+			requestURL: "http://jaylub.local/login",
+			host:       "jaylub.local",
+			forwarded:  "https",
+			wantSecure: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, test.requestURL, nil)
+			request.Host = test.host
+			if test.forwarded != "" {
+				request.Header.Set("X-Forwarded-Proto", test.forwarded)
+			}
+			cookie := service.sessionCookie(request, "session-token", time.Now().Add(time.Hour))
+			if cookie.Secure != test.wantSecure {
+				t.Errorf("cookie Secure = %v, want %v", cookie.Secure, test.wantSecure)
+			}
+		})
+	}
+}
+
 func TestMiddlewareAddsUserContextOnPublicHomeWhenSessionIsValid(t *testing.T) {
 	service, err := New(filepath.Join(t.TempDir(), "users.db"))
 	if err != nil {
