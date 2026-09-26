@@ -3,7 +3,19 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  {{if .MetaTitle}}
+  <title>{{.MetaTitle}}</title>
+  <meta name="description" content="{{.MetaDescription}}">
+  <link rel="canonical" href="{{.CanonicalURL}}">
+  <meta property="og:title" content="{{.OpenGraphTitle}}">
+  <meta property="og:description" content="{{.OpenGraphDesc}}">
+  <meta property="og:type" content="{{.OpenGraphType}}">
+  <meta property="og:url" content="{{.OpenGraphURL}}">
+  {{if .Indexable}}<meta name="robots" content="index, follow">{{end}}
+  {{if .StructuredData}}<script type="application/ld+json">{{.StructuredData}}</script>{{end}}
+  {{else}}
   <title>{{.Title}}</title>
+  {{end}}
   <link rel="icon" href="/web/static/img/icon.png" type="image/png">
   <link rel="stylesheet" href="/web/static/css/layout.css?v=settings-link-2" />
   <link rel="stylesheet" href="/web/static/css/components.css?v=purple-1" />

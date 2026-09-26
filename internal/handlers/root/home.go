@@ -14,7 +14,21 @@ func UseStatsDB(db *sql.DB) {
 }
 
 var (
-	Home        = renderer.Page("home")
+	Home = renderer.PageWithSEO("home", views.SEOData{
+		Title:               "Jaylub | Projects, Community, and Experiments",
+		Description:         "Explore the Jaylub platform: project pages, a community chat, the Jaylive arena survival game, documentation, and Discord bots.",
+		CanonicalURL:        "https://jaylub.com/",
+		OpenGraphType:       "website",
+		ApplicationName:     "Jaylub",
+		ApplicationCategory: "WebApplication",
+		Features: []string{
+			"Jaylive 2D arena survival game",
+			"Authenticated community chat with file attachments",
+			"Project pages and wiki",
+			"Technical documentation",
+			"Discord bots and community integrations",
+		},
+	})
 	About       = renderer.Page("about")
 	Me          = renderer.Page("me")
 	Allah       = renderer.Page("allah")

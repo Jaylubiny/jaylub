@@ -1,4 +1,6 @@
 .env
+.bin
+internal/database/files
 *.pem
 *.key
 *.json

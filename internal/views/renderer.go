@@ -2,6 +2,7 @@ package views
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"jaylub/internal/auth"
@@ -12,12 +13,42 @@ import (
 
 type PageData struct {
 	Title           string
+	MetaTitle       string
+	MetaDescription string
+	CanonicalURL    string
+	OpenGraphTitle  string
+	OpenGraphDesc   string
+	OpenGraphType   string
+	OpenGraphURL    string
+	StructuredData  template.JS
+	Indexable       bool
 	Username        string
 	Initials        string
 	Query           string
 	Stats           ProfileStats
 	ChatUnreadCount int
 	ChatSettings    auth.ChatSettings
+}
+
+type SEOData struct {
+	Title               string
+	Description         string
+	CanonicalURL        string
+	OpenGraphType       string
+	ApplicationName     string
+	ApplicationCategory string
+	Features            []string
+}
+
+type softwareApplicationSchema struct {
+	Context             string   `json:"@context"`
+	Type                string   `json:"@type"`
+	Name                string   `json:"name"`
+	Description         string   `json:"description"`
+	URL                 string   `json:"url"`
+	ApplicationCategory string   `json:"applicationCategory"`
+	OperatingSystem     string   `json:"operatingSystem"`
+	FeatureList         []string `json:"featureList"`
 }
 
 type ProfileStats struct {
@@ -48,12 +79,20 @@ func (r *Renderer) SetDB(db *sql.DB) {
 }
 
 func (r *Renderer) Page(name string) http.HandlerFunc {
+	return r.PageWithSEO(name, SEOData{})
+}
+
+func (r *Renderer) PageWithSEO(name string, seo SEOData) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		r.Render(w, req, name)
+		r.RenderWithSEO(w, req, name, seo)
 	}
 }
 
 func (r *Renderer) Render(w http.ResponseWriter, req *http.Request, name string) {
+	r.RenderWithSEO(w, req, name, SEOData{})
+}
+
+func (r *Renderer) RenderWithSEO(w http.ResponseWriter, req *http.Request, name string, seo SEOData) {
 	if err := recordVisit(); err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
@@ -69,6 +108,10 @@ func (r *Renderer) Render(w http.ResponseWriter, req *http.Request, name string)
 	}
 
 	data := PageData{Title: name, Query: req.URL.Query().Get("saved")}
+	if err := populateSEO(&data, seo); err != nil {
+		http.Error(w, "Could not render page metadata.", http.StatusInternalServerError)
+		return
+	}
 	if user, ok := auth.UserFromContext(req.Context()); ok {
 		data.Username = user.Username
 		data.Initials = initials(user.Username)
@@ -84,6 +127,37 @@ func (r *Renderer) Render(w http.ResponseWriter, req *http.Request, name string)
 	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
 		http.Error(w, "Template Error", http.StatusInternalServerError)
 	}
+}
+
+func populateSEO(data *PageData, seo SEOData) error {
+	if seo.Title == "" {
+		return nil
+	}
+
+	data.MetaTitle = seo.Title
+	data.MetaDescription = seo.Description
+	data.CanonicalURL = seo.CanonicalURL
+	data.OpenGraphTitle = seo.Title
+	data.OpenGraphDesc = seo.Description
+	data.OpenGraphType = seo.OpenGraphType
+	data.OpenGraphURL = seo.CanonicalURL
+	data.Indexable = true
+
+	schema, err := json.Marshal(softwareApplicationSchema{
+		Context:             "https://schema.org",
+		Type:                "SoftwareApplication",
+		Name:                seo.ApplicationName,
+		Description:         seo.Description,
+		URL:                 seo.CanonicalURL,
+		ApplicationCategory: seo.ApplicationCategory,
+		OperatingSystem:     "Web",
+		FeatureList:         seo.Features,
+	})
+	if err != nil {
+		return err
+	}
+	data.StructuredData = template.JS(schema)
+	return nil
 }
 
 func (r *Renderer) chatSettings(user auth.User) (auth.ChatSettings, error) {

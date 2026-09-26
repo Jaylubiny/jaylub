@@ -1,3 +1,9 @@
 #!/usr/bin/env bash
-kill $(cat server.pid)
-echo "Stopped application server process."
+set -euo pipefail
+
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 <systemd-unit>" >&2
+    exit 2
+fi
+
+exec systemctl stop "$1"

@@ -34,6 +34,18 @@ type User struct {
 	Username string
 }
 
+type loginPageData struct {
+	Title           string
+	MetaDescription string
+	CanonicalURL    string
+	OpenGraphTitle  string
+	OpenGraphDesc   string
+	OpenGraphType   string
+	OpenGraphURL    string
+	Robots          string
+	Error           string
+}
+
 type ChatSettings struct {
 	TimeFormat        string
 	MessageDensity    string
@@ -57,10 +69,6 @@ func New(dbPath string) (*Service, error) {
 
 	service := &Service{db: db}
 	if err := service.initSchema(); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
-	if err := service.ensureExampleUser(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -308,20 +316,6 @@ func (s *Service) addColumnIfMissing(table, column, definition string) error {
 	return err
 }
 
-func (s *Service) ensureExampleUser() error {
-	hash, err := bcrypt.GenerateFromPassword([]byte("preclik"), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
-
-	_, err = s.db.Exec(`
-		INSERT INTO users (username, password_hash)
-		VALUES (?, ?)
-		ON CONFLICT(username) DO UPDATE SET password_hash = excluded.password_hash
-	`, "preclik", string(hash))
-	return err
-}
-
 func (s *Service) Login(w http.ResponseWriter, r *http.Request, username, password string) error {
 	user, passwordHash, err := s.userWithPasswordHash(username)
 	if err != nil {
@@ -369,6 +363,16 @@ func (s *Service) Middleware(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 
+		if r.URL.Path == "/" {
+			if user, ok := s.AuthenticatedUser(r); ok {
+				ctx := context.WithValue(r.Context(), userContextKey, user)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		if s.isPublicPath(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
@@ -387,6 +391,7 @@ func (s *Service) Middleware(next http.Handler) http.Handler {
 
 func (s *Service) LoginPage() http.HandlerFunc {
 	tmpl := template.Must(template.ParseFiles("web/templates/login.html"))
+	pageData := defaultLoginPageData()
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -395,7 +400,9 @@ func (s *Service) LoginPage() http.HandlerFunc {
 				http.Redirect(w, r, "/", http.StatusSeeOther)
 				return
 			}
-			_ = tmpl.Execute(w, map[string]string{"Title": "Login"})
+			if err := tmpl.Execute(w, pageData); err != nil {
+				http.Error(w, "Could not render login page.", http.StatusInternalServerError)
+			}
 		case http.MethodPost:
 			if err := r.ParseForm(); err != nil {
 				http.Error(w, "Bad Request", http.StatusBadRequest)
@@ -406,10 +413,11 @@ func (s *Service) LoginPage() http.HandlerFunc {
 			password := r.FormValue("password")
 			if err := s.Login(w, r, username, password); err != nil {
 				w.WriteHeader(http.StatusUnauthorized)
-				_ = tmpl.Execute(w, map[string]string{
-					"Title": "Login",
-					"Error": "Invalid username or password.",
-				})
+				errorData := pageData
+				errorData.Error = "Invalid username or password."
+				if executeErr := tmpl.Execute(w, errorData); executeErr != nil {
+					http.Error(w, "Could not render login page.", http.StatusInternalServerError)
+				}
 				return
 			}
 
@@ -418,6 +426,19 @@ func (s *Service) LoginPage() http.HandlerFunc {
 			w.Header().Set("Allow", "GET, POST")
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		}
+	}
+}
+
+func defaultLoginPageData() loginPageData {
+	return loginPageData{
+		Title:           "Sign in to Jaylub",
+		MetaDescription: "Sign in to your Jaylub account to access the community chat, games, and member features.",
+		CanonicalURL:    "https://jaylub.com/login",
+		OpenGraphTitle:  "Sign in to Jaylub",
+		OpenGraphDesc:   "Sign in to your Jaylub account to access the community chat, games, and member features.",
+		OpenGraphType:   "website",
+		OpenGraphURL:    "https://jaylub.com/login",
+		Robots:          "noindex, nofollow",
 	}
 }
 
@@ -491,7 +512,8 @@ func (s *Service) sessionCookie(r *http.Request, value string, expires time.Time
 }
 
 func (s *Service) isPublicPath(path string) bool {
-	return path == "/login" ||
+	return path == "/" ||
+		path == "/login" ||
 		path == "/.well-known/discord" ||
 		strings.HasPrefix(path, "/web/static/") ||
 		strings.HasPrefix(path, "/static/")
