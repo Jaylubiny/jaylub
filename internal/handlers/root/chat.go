@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -135,6 +137,11 @@ func (s *ChatService) Messages(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	channel, err := requestedChatChannel(r)
+	if err != nil {
+		http.Error(w, "Invalid chat channel.", http.StatusBadRequest)
+		return
+	}
 
 	s.markActive(r)
 	if err := s.cleanupExpired(); err != nil {
@@ -152,7 +159,17 @@ func (s *ChatService) Messages(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	messages, err := s.recentMessages(afterID)
+	var messages []ChatMessage
+	if channel == "self" {
+		user, ok := auth.UserFromContext(r.Context())
+		if !ok {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		messages, err = s.recentSelfMessages(user.ID, afterID)
+	} else {
+		messages, err = s.recentMessages(afterID)
+	}
 	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
@@ -174,6 +191,11 @@ func (s *ChatService) SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	if !sameOriginRequest(r) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	channel, err := requestedChatChannel(r)
+	if err != nil {
+		http.Error(w, "Invalid chat channel.", http.StatusBadRequest)
 		return
 	}
 
@@ -213,6 +235,10 @@ func (s *ChatService) SendMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if channel == "self" {
+		s.sendSelfMessage(w, user, message, upload, userKey)
+		return
+	}
 
 	now := time.Now().UTC()
 	tx, err := s.db.Begin()
@@ -240,7 +266,7 @@ func (s *ChatService) SendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if upload != nil {
-		if err := s.saveChatUpload(tx, id, upload); err != nil {
+		if err := s.saveChatUpload(tx, id, upload, false); err != nil {
 			_ = tx.Rollback()
 			s.releasePost(userKey)
 			if errors.Is(err, errChatFileTooLarge) {
@@ -273,6 +299,79 @@ func (s *ChatService) SendMessage(w http.ResponseWriter, r *http.Request) {
 		"onlineCount": len(onlineUsers),
 		"onlineUsers": onlineUsers,
 	})
+}
+
+func (s *ChatService) sendSelfMessage(w http.ResponseWriter, user auth.User, message string, upload *chatUpload, userKey string) {
+	now := time.Now().UTC()
+	tx, err := s.db.Begin()
+	if err != nil {
+		s.releasePost(userKey)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	result, err := tx.Exec(
+		`INSERT INTO self_chat_messages (user_id, username, message, timestamp) VALUES (?, ?, ?, ?)`,
+		user.ID, user.Username, message, now.Format(time.RFC3339),
+	)
+	if err != nil {
+		_ = tx.Rollback()
+		s.releasePost(userKey)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		_ = tx.Rollback()
+		s.releasePost(userKey)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	if upload != nil {
+		if err := s.saveChatUpload(tx, id, upload, true); err != nil {
+			_ = tx.Rollback()
+			s.releasePost(userKey)
+			if errors.Is(err, errChatFileTooLarge) {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+			} else {
+				http.Error(w, "Could not save the attachment.", http.StatusInternalServerError)
+			}
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		s.releasePost(userKey)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	messages := []ChatMessage{{ID: id}}
+	if err := s.loadSelfAttachments(messages, user.ID); err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	onlineUsers := s.onlineUsers()
+	s.writeJSON(w, map[string]any{
+		"message": ChatMessage{
+			ID:          id,
+			Username:    user.Username,
+			Message:     message,
+			Timestamp:   now.Format(time.RFC3339),
+			Attachments: messages[0].Attachments,
+		},
+		"onlineCount": len(onlineUsers),
+		"onlineUsers": onlineUsers,
+	})
+}
+
+func requestedChatChannel(r *http.Request) (string, error) {
+	switch channel := r.URL.Query().Get("channel"); channel {
+	case "", "global":
+		return "global", nil
+	case "self":
+		return "self", nil
+	default:
+		return "", errors.New("unknown chat channel")
+	}
 }
 
 func (s *ChatService) recentMessages(afterID int64) ([]ChatMessage, error) {
@@ -343,6 +442,54 @@ func (s *ChatService) messagesAfter(afterID int64) ([]ChatMessage, error) {
 	return messages, s.loadAttachments(messages)
 }
 
+func (s *ChatService) recentSelfMessages(userID, afterID int64) ([]ChatMessage, error) {
+	cutoff := time.Now().UTC().Add(-chatRetention).Format(time.RFC3339)
+	var rows *sql.Rows
+	var err error
+	if afterID > 0 {
+		rows, err = s.db.Query(`
+			SELECT id, username, message, timestamp
+			FROM self_chat_messages
+			WHERE user_id = ? AND id > ? AND timestamp >= ?
+			ORDER BY id ASC
+			LIMIT ?
+		`, userID, afterID, cutoff, chatRecentLimit)
+	} else {
+		rows, err = s.db.Query(`
+			SELECT id, username, message, timestamp
+			FROM (
+				SELECT id, username, message, timestamp
+				FROM self_chat_messages
+				WHERE user_id = ? AND timestamp >= ?
+				ORDER BY id DESC
+				LIMIT ?
+			)
+			ORDER BY id ASC
+		`, userID, cutoff, chatRecentLimit)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	messages := make([]ChatMessage, 0, chatRecentLimit)
+	for rows.Next() {
+		var message ChatMessage
+		if err := rows.Scan(&message.ID, &message.Username, &message.Message, &message.Timestamp); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		messages = append(messages, message)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	return messages, s.loadSelfAttachments(messages, userID)
+}
+
 func (s *ChatService) loadAttachments(messages []ChatMessage) error {
 	if len(messages) == 0 {
 		return nil
@@ -377,6 +524,47 @@ func (s *ChatService) loadAttachments(messages []ChatMessage) error {
 		attachment.URL = fmt.Sprintf("/chat/files/%d", attachment.ID)
 		index, exists := messageIndexes[messageID]
 		if exists {
+			messages[index].Attachments = append(messages[index].Attachments, attachment)
+		}
+	}
+	return rows.Err()
+}
+
+func (s *ChatService) loadSelfAttachments(messages []ChatMessage, userID int64) error {
+	if len(messages) == 0 {
+		return nil
+	}
+
+	messageIndexes := make(map[int64]int, len(messages))
+	placeholders := make([]string, len(messages))
+	args := make([]any, 0, len(messages)+1)
+	args = append(args, userID)
+	for index := range messages {
+		messageIndexes[messages[index].ID] = index
+		placeholders[index] = "?"
+		args = append(args, messages[index].ID)
+	}
+
+	rows, err := s.db.Query(`
+		SELECT a.message_id, a.id, a.original_name, a.content_type, a.size
+		FROM self_chat_attachments a
+		JOIN self_chat_messages m ON m.id = a.message_id
+		WHERE m.user_id = ? AND a.message_id IN (`+strings.Join(placeholders, ",")+`)
+		ORDER BY a.message_id, a.id
+	`, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var messageID int64
+		var attachment ChatAttachment
+		if err := rows.Scan(&messageID, &attachment.ID, &attachment.Name, &attachment.ContentType, &attachment.Size); err != nil {
+			return err
+		}
+		attachment.URL = fmt.Sprintf("/chat/files/%d?channel=self", attachment.ID)
+		if index, exists := messageIndexes[messageID]; exists {
 			messages[index].Attachments = append(messages[index].Attachments, attachment)
 		}
 	}
@@ -423,6 +611,29 @@ func (s *ChatService) cleanupExpired() error {
 	if err := rows.Close(); err != nil {
 		return err
 	}
+	rows, err = tx.Query(`
+		SELECT stored_name
+		FROM self_chat_attachments
+		WHERE message_id IN (SELECT id FROM self_chat_messages WHERE timestamp < ?)
+	`, cutoff)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var storedName string
+		if err := rows.Scan(&storedName); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		expiredFiles = append(expiredFiles, storedName)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
 
 	if _, err := tx.Exec(`
 		DELETE FROM chat_attachments
@@ -431,6 +642,15 @@ func (s *ChatService) cleanupExpired() error {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM chat_messages WHERE timestamp < ?`, cutoff); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`
+		DELETE FROM self_chat_attachments
+		WHERE message_id IN (SELECT id FROM self_chat_messages WHERE timestamp < ?)
+	`, cutoff); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM self_chat_messages WHERE timestamp < ?`, cutoff); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
@@ -460,7 +680,11 @@ func (s *ChatService) removeOrphanedExpiredFiles(cutoff string) error {
 		return err
 	}
 
-	rows, err := s.db.Query(`SELECT stored_name FROM chat_attachments`)
+	rows, err := s.db.Query(`
+		SELECT stored_name FROM chat_attachments
+		UNION
+		SELECT stored_name FROM self_chat_attachments
+	`)
 	if err != nil {
 		return err
 	}
@@ -516,8 +740,22 @@ func (s *ChatService) File(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var storedName, contentType, originalName string
-	err = s.db.QueryRow(`SELECT stored_name, content_type, original_name FROM chat_attachments WHERE id = ?`, id).
-		Scan(&storedName, &contentType, &originalName)
+	if r.URL.Query().Get("channel") == "self" {
+		user, ok := auth.UserFromContext(r.Context())
+		if !ok {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		err = s.db.QueryRow(`
+			SELECT a.stored_name, a.content_type, a.original_name
+			FROM self_chat_attachments a
+			JOIN self_chat_messages m ON m.id = a.message_id
+			WHERE a.id = ? AND m.user_id = ?
+		`, id, user.ID).Scan(&storedName, &contentType, &originalName)
+	} else {
+		err = s.db.QueryRow(`SELECT stored_name, content_type, original_name FROM chat_attachments WHERE id = ?`, id).
+			Scan(&storedName, &contentType, &originalName)
+	}
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -527,8 +765,11 @@ func (s *ChatService) File(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	disposition := "attachment"
-	if contentType == "image/png" {
+	if strings.HasPrefix(contentType, "image/") {
 		disposition = "inline"
+	}
+	if contentType == "image/svg+xml" {
+		w.Header().Set("Content-Security-Policy", "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:")
 	}
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`%s; filename="%s"`, disposition, safeDownloadName(originalName)))
 	http.ServeFile(w, r, path)
@@ -565,7 +806,7 @@ func parseChatSubmission(w http.ResponseWriter, r *http.Request) (string, *chatU
 	}
 	defer file.Close()
 
-	contentTypeBuffer := make([]byte, 512)
+	contentTypeBuffer := make([]byte, 4096)
 	n, err := file.Read(contentTypeBuffer)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return "", nil, errors.New("Could not read the attachment.")
@@ -573,14 +814,60 @@ func parseChatSubmission(w http.ResponseWriter, r *http.Request) (string, *chatU
 	if _, err := file.Seek(0, 0); err != nil {
 		return "", nil, errors.New("Could not read the attachment.")
 	}
-	detectedType := http.DetectContentType(contentTypeBuffer[:n])
+	detectedType := detectChatContentType(contentTypeBuffer[:n])
 	if header.Size > chatMaxFileSize {
 		return "", nil, errChatFileTooLarge
 	}
 	return message, &chatUpload{header: header, contentType: detectedType}, nil
 }
 
-func (s *ChatService) saveChatUpload(tx *sql.Tx, messageID int64, upload *chatUpload) error {
+func detectChatContentType(sample []byte) string {
+	if isTIFFImage(sample) {
+		return "image/tiff"
+	}
+	if isAVIFImage(sample) {
+		return "image/avif"
+	}
+	if isSVGImage(sample) {
+		return "image/svg+xml"
+	}
+	return http.DetectContentType(sample)
+}
+
+func isTIFFImage(data []byte) bool {
+	return len(data) >= 4 && (bytes.Equal(data[:4], []byte{'I', 'I', 42, 0}) ||
+		bytes.Equal(data[:4], []byte{'M', 'M', 0, 42}) ||
+		bytes.Equal(data[:4], []byte{'I', 'I', 43, 0}) ||
+		bytes.Equal(data[:4], []byte{'M', 'M', 0, 43}))
+}
+
+func isAVIFImage(data []byte) bool {
+	return len(data) >= 12 &&
+		string(data[4:8]) == "ftyp" &&
+		(string(data[8:12]) == "avif" || string(data[8:12]) == "avis")
+}
+
+func isSVGImage(data []byte) bool {
+	decoder := xml.NewDecoder(bytes.NewReader(data))
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			return false
+		}
+		switch token := token.(type) {
+		case xml.StartElement:
+			return token.Name.Local == "svg"
+		case xml.CharData:
+			if len(bytes.TrimSpace(token)) != 0 {
+				return false
+			}
+		case xml.Directive:
+			return false
+		}
+	}
+}
+
+func (s *ChatService) saveChatUpload(tx *sql.Tx, messageID int64, upload *chatUpload, selfChat bool) error {
 	if err := os.MkdirAll(s.filesDir, 0750); err != nil {
 		return err
 	}
@@ -615,8 +902,18 @@ func (s *ChatService) saveChatUpload(tx *sql.Tx, messageID int64, upload *chatUp
 		_ = os.Remove(path)
 		return err
 	}
-	_, err = tx.Exec(`INSERT INTO chat_attachments (message_id, original_name, stored_name, content_type, size) VALUES (?, ?, ?, ?, ?)`,
-		messageID, safeDownloadName(upload.header.Filename), storedName, upload.contentType, written)
+	attachmentName := safeDownloadName(upload.header.Filename)
+	if selfChat {
+		_, err = tx.Exec(`
+			INSERT INTO self_chat_attachments (message_id, original_name, stored_name, content_type, size)
+			VALUES (?, ?, ?, ?, ?)
+		`, messageID, attachmentName, storedName, upload.contentType, written)
+	} else {
+		_, err = tx.Exec(`
+			INSERT INTO chat_attachments (message_id, original_name, stored_name, content_type, size)
+			VALUES (?, ?, ?, ?, ?)
+		`, messageID, attachmentName, storedName, upload.contentType, written)
+	}
 	if err != nil {
 		_ = os.Remove(path)
 	}

@@ -11,6 +11,9 @@ const messageCounter = document.getElementById("message-counter");
 const fileInput = document.getElementById("file-input");
 const fileButton = document.getElementById("file-button");
 const fileName = document.getElementById("file-name");
+const channelButtons = document.querySelectorAll("[data-chat-channel]");
+const chatTitle = document.getElementById("chat-title");
+const chatDescription = document.getElementById("chat-description");
 
 const currentUser = chatPage?.dataset.currentUser || "";
 const timeFormat = chatPage?.dataset.timeFormat || "24h";
@@ -19,6 +22,7 @@ const showTimestamps = chatPage?.dataset.showTimestamps !== "false";
 const showImagePreviews = chatPage?.dataset.showImagePreviews !== "false";
 let lastMessageId = 0;
 let polling = false;
+let activeChannel = "global";
 
 if (chatPage) {
   chatPage.dataset.messageDensity = messageDensity;
@@ -134,7 +138,7 @@ function appendMessage(message) {
     link.rel = "noopener";
     link.download = attachment.name;
 
-    if (attachment.contentType?.split(";", 1)[0].toLowerCase() === "image/png" && showImagePreviews) {
+    if (attachment.contentType?.split(";", 1)[0].toLowerCase().startsWith("image/") && showImagePreviews) {
       const image = document.createElement("img");
       image.className = "message-image";
       image.src = attachment.url;
@@ -161,9 +165,10 @@ async function loadMessages() {
     return;
   }
 
+  const requestedChannel = activeChannel;
   polling = true;
   try {
-    const response = await fetch(`/chat/messages?after=${lastMessageId}`, {
+    const response = await fetch(`/chat/messages?channel=${requestedChannel}&after=${lastMessageId}`, {
       headers: { Accept: "application/json" },
     });
     if (!response.ok) {
@@ -171,6 +176,7 @@ async function loadMessages() {
     }
 
     const data = await response.json();
+    if (requestedChannel !== activeChannel) return;
     for (const message of data.messages || []) {
       appendMessage(message);
     }
@@ -191,8 +197,37 @@ async function loadMessages() {
     showError("Could not load messages. Retrying soon.");
   } finally {
     polling = false;
+    if (requestedChannel !== activeChannel) {
+      loadMessages();
+    }
   }
 }
+
+channelButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const channel = button.dataset.chatChannel;
+    if ((channel !== "global" && channel !== "self") || channel === activeChannel) return;
+
+    activeChannel = channel;
+    lastMessageId = 0;
+    messageList.replaceChildren();
+    const loading = document.createElement("p");
+    loading.className = "chat-empty";
+    loading.textContent = "Loading messages…";
+    messageList.append(loading);
+    newMessages.hidden = true;
+    chatTitle.textContent = channel === "self" ? "Notes to self" : "Chat";
+    chatDescription.textContent = channel === "self"
+      ? "A private channel only you can see."
+      : "Global room for logged-in Jaylub users. Messages update automatically.";
+    channelButtons.forEach((tab) => {
+      const selected = tab === button;
+      tab.classList.toggle("is-active", selected);
+      tab.setAttribute("aria-pressed", String(selected));
+    });
+    loadMessages();
+  });
+});
 
 chatForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -211,6 +246,7 @@ chatForm.addEventListener("submit", async (event) => {
 
   const button = chatForm.querySelector('button[type="submit"]');
   button.disabled = true;
+  const sendChannel = activeChannel;
 
   try {
     const formData = new FormData();
@@ -219,7 +255,7 @@ chatForm.addEventListener("submit", async (event) => {
       formData.append("file", file);
     }
 
-    const response = await fetch("/chat/send", {
+    const response = await fetch(`/chat/send?channel=${sendChannel}`, {
       method: "POST",
       headers: {
         "Accept": "application/json",
@@ -234,7 +270,7 @@ chatForm.addEventListener("submit", async (event) => {
     }
 
     const data = await response.json();
-    if (data.message) {
+    if (data.message && activeChannel === sendChannel) {
       appendMessage(data.message);
       scrollToBottom();
     }
@@ -242,10 +278,12 @@ chatForm.addEventListener("submit", async (event) => {
       onlineCount.textContent = data.onlineCount;
     }
     updateOnlineUsers(data.onlineUsers);
-    messageInput.value = "";
-    fileInput.value = "";
-    fileName.textContent = "";
-    messageCounter.textContent = "0 / 500";
+    if (activeChannel === sendChannel) {
+      messageInput.value = "";
+      fileInput.value = "";
+      fileName.textContent = "";
+      messageCounter.textContent = "0 / 500";
+    }
   } catch (error) {
     showError(error.message.trim() || "Could not send message.");
   } finally {

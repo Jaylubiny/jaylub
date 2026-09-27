@@ -171,6 +171,30 @@ func (s *Service) initSchema() error {
 
 		CREATE INDEX IF NOT EXISTS idx_chat_attachments_message_id ON chat_attachments(message_id);
 
+		CREATE TABLE IF NOT EXISTS self_chat_messages (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			username TEXT NOT NULL,
+			message TEXT NOT NULL,
+			timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_self_chat_messages_user_id_id ON self_chat_messages(user_id, id);
+		CREATE INDEX IF NOT EXISTS idx_self_chat_messages_timestamp ON self_chat_messages(timestamp);
+
+		CREATE TABLE IF NOT EXISTS self_chat_attachments (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			message_id INTEGER NOT NULL,
+			original_name TEXT NOT NULL,
+			stored_name TEXT NOT NULL UNIQUE,
+			content_type TEXT NOT NULL,
+			size INTEGER NOT NULL,
+			FOREIGN KEY (message_id) REFERENCES self_chat_messages(id) ON DELETE CASCADE
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_self_chat_attachments_message_id ON self_chat_attachments(message_id);
+
 		CREATE TABLE IF NOT EXISTS chat_reads (
 			user_id INTEGER PRIMARY KEY,
 			last_read_at DATETIME NOT NULL,

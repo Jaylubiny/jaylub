@@ -1,6 +1,6 @@
 {{define "head"}}
-<link rel="stylesheet" href="/web/static/css/chat.css?v=chat-7">
-<script src="/web/static/js/chat.js?v=chat-7" defer></script>
+<link rel="stylesheet" href="/web/static/css/chat.css?v=chat-10">
+<script src="/web/static/js/chat.js?v=chat-9" defer></script>
 {{end}}
 
 {{define "content"}}
@@ -8,8 +8,8 @@
 <section class="chat-page" data-current-user="{{.Username}}" data-time-format="{{.ChatSettings.TimeFormat}}" data-message-density="{{.ChatSettings.MessageDensity}}" data-show-timestamps="{{.ChatSettings.ShowTimestamps}}" data-show-image-previews="{{.ChatSettings.ShowImagePreviews}}">
     <header class="chat-header">
         <div>
-            <h1>Chat</h1>
-            <p>Global room for logged-in Jaylub users. Messages update automatically.</p>
+            <h1 id="chat-title">Chat</h1>
+            <p id="chat-description">Global room for logged-in Jaylub users. Messages update automatically.</p>
         </div>
         <div class="chat-status" aria-label="Online users" tabindex="0" aria-describedby="online-users-tooltip">
             <span class="chat-status-dot" aria-hidden="true"></span>
@@ -20,6 +20,11 @@
             </div>
         </div>
     </header>
+
+    <nav class="chat-channel-tabs" aria-label="Chat channels">
+        <button type="button" class="chat-channel-button is-active" data-chat-channel="global" aria-pressed="true">Global chat</button>
+        <button type="button" class="chat-channel-button" data-chat-channel="self" aria-pressed="false">Notes to self</button>
+    </nav>
 
     <div id="chat-error" class="chat-error" role="alert" hidden></div>
     <div id="chat-connection" class="chat-connection" role="status" hidden></div>
