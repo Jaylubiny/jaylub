@@ -1,6 +1,6 @@
 {{define "head"}}
-<link rel="stylesheet" href="/web/static/css/chat.css?v=chat-10">
-<script src="/web/static/js/chat.js?v=chat-9" defer></script>
+<link rel="stylesheet" href="/web/static/css/chat.css?v=chat-14">
+<script src="/web/static/js/chat.js?v=chat-14" defer></script>
 {{end}}
 
 {{define "content"}}
@@ -43,11 +43,38 @@
         <div class="chat-compose">
             <div class="chat-actions">
                 <button id="file-button" class="file-button" type="button" aria-label="Attach a file" title="Attach a file">+</button>
+                <button id="open-gift-dialog" class="gift-open-button" type="button">Gift</button>
                 <button type="submit">Send</button>
             </div>
             <span id="file-name" class="file-name" aria-live="polite"></span>
         </div>
     </form>
+
+    <dialog id="coin-gift-dialog" class="coin-gift-dialog">
+        <form id="coin-gift-form" class="coin-gift-form">
+            <h2>Gift Jaylive coins</h2>
+            <label>
+                Gift type
+                <select id="gift-type" name="type">
+                    <option value="direct">Send to a user</option>
+                    <option value="card">Post a claimable gift card</option>
+                </select>
+            </label>
+            <label id="gift-recipient-field">
+                Recipient
+                <select id="gift-recipient" name="recipientId" required></select>
+            </label>
+            <label>
+                Amount
+                <input id="gift-amount" name="amount" type="number" min="1" max="1000000" step="1" required>
+            </label>
+            <p class="gift-dialog-note">Gift amounts are deducted from your Jaylive coin balance.</p>
+            <div class="gift-dialog-actions">
+                <button type="button" id="cancel-gift">Cancel</button>
+                <button type="submit">Send gift</button>
+            </div>
+        </form>
+    </dialog>
 </section>
 
 {{end}}

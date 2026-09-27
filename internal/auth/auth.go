@@ -171,6 +171,29 @@ func (s *Service) initSchema() error {
 
 		CREATE INDEX IF NOT EXISTS idx_chat_attachments_message_id ON chat_attachments(message_id);
 
+		CREATE TABLE IF NOT EXISTS chat_coin_gifts (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			message_id INTEGER NOT NULL UNIQUE,
+			gift_type TEXT NOT NULL CHECK (gift_type IN ('direct', 'card')),
+			amount INTEGER NOT NULL CHECK (amount > 0),
+			sender_user_id INTEGER NOT NULL,
+			sender_username TEXT NOT NULL,
+			recipient_user_id INTEGER,
+			recipient_username TEXT,
+			claimed_by_user_id INTEGER,
+			claimed_by_username TEXT,
+			claim_message_id INTEGER,
+			created_at DATETIME NOT NULL,
+			FOREIGN KEY (message_id) REFERENCES chat_messages(id) ON DELETE CASCADE,
+			FOREIGN KEY (sender_user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (recipient_user_id) REFERENCES users(id) ON DELETE SET NULL,
+			FOREIGN KEY (claimed_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+			FOREIGN KEY (claim_message_id) REFERENCES chat_messages(id) ON DELETE SET NULL
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_chat_coin_gifts_claimable ON chat_coin_gifts(gift_type, claimed_by_user_id);
+		CREATE INDEX IF NOT EXISTS idx_chat_coin_gifts_claim_message ON chat_coin_gifts(claim_message_id);
+
 		CREATE TABLE IF NOT EXISTS self_chat_messages (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			user_id INTEGER NOT NULL,

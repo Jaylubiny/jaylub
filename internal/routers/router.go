@@ -50,6 +50,9 @@ func Basic(authService *auth.Service) http.Handler {
 		{"/.well-known/discord", handlers.DiscordWellKnown},
 
 		{"/chat", chatService.Page},
+		{"/chat/gift-recipients", chatService.GiftRecipients},
+		{"/chat/gift", chatService.GiftCoins},
+		{"/chat/gift/claim", chatService.ClaimGiftCard},
 		{"/chat/messages", chatService.Messages},
 		{"/chat/send", chatService.SendMessage},
 		{"/chat/files/", chatService.File},

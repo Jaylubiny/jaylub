@@ -14,6 +14,13 @@ const fileName = document.getElementById("file-name");
 const channelButtons = document.querySelectorAll("[data-chat-channel]");
 const chatTitle = document.getElementById("chat-title");
 const chatDescription = document.getElementById("chat-description");
+const openGiftDialogButton = document.getElementById("open-gift-dialog");
+const giftDialog = document.getElementById("coin-gift-dialog");
+const giftForm = document.getElementById("coin-gift-form");
+const giftType = document.getElementById("gift-type");
+const giftRecipientField = document.getElementById("gift-recipient-field");
+const giftRecipient = document.getElementById("gift-recipient");
+const giftAmount = document.getElementById("gift-amount");
 
 const currentUser = chatPage?.dataset.currentUser || "";
 const timeFormat = chatPage?.dataset.timeFormat || "24h";
@@ -130,6 +137,35 @@ function appendMessage(message) {
 
   meta.append(username, timestamp);
   item.append(meta, body);
+  if (message.gift) {
+    item.classList.add("gift-message");
+    body.hidden = true;
+    const gift = document.createElement("div");
+    gift.className = "gift-event";
+    const description = document.createElement("p");
+    description.className = "gift-event-description";
+    description.textContent = formatGiftDescription(message.gift);
+    gift.append(description);
+    if (message.gift.type === "card") {
+      gift.dataset.giftCard = String(message.gift.id);
+    } else if (message.gift.type === "claim") {
+      const originalCard = messageList.querySelector(`[data-gift-card="${message.gift.id}"]`);
+      if (originalCard) {
+        const originalDescription = originalCard.querySelector(".gift-event-description");
+        if (originalDescription) originalDescription.textContent = formatGiftDescription(message.gift);
+        originalCard.querySelector("[data-claim-gift]")?.remove();
+      }
+    }
+    if (message.gift.type === "card" && !message.gift.claimed && !message.gift.expired && message.gift.senderUsername !== currentUser) {
+      const claimButton = document.createElement("button");
+      claimButton.className = "gift-claim-button";
+      claimButton.type = "button";
+      claimButton.dataset.claimGift = String(message.gift.id);
+      claimButton.textContent = `Claim ${message.gift.amount} coins`;
+      gift.append(claimButton);
+    }
+    item.append(gift);
+  }
   for (const attachment of message.attachments || []) {
     const link = document.createElement("a");
     link.className = "message-attachment";
@@ -158,6 +194,22 @@ function appendMessage(message) {
   } else {
     newMessages.hidden = false;
   }
+}
+
+function formatGiftDescription(gift) {
+  if (gift.type === "direct") {
+    return `${gift.senderUsername} gifted ${gift.amount} Jaylive coins to ${gift.recipientUsername}.`;
+  }
+  if (gift.type === "claim") {
+    return `${gift.claimedByUsername || gift.recipientUsername} claimed a ${gift.amount}-coin gift card from ${gift.senderUsername}.`;
+  }
+  if (gift.claimed) {
+    return `${gift.senderUsername} posted a ${gift.amount}-coin gift card, claimed by ${gift.claimedByUsername}.`;
+  }
+  if (gift.expired) {
+    return `${gift.senderUsername} posted a ${gift.amount}-coin gift card that expired unclaimed.`;
+  }
+  return `${gift.senderUsername} posted a ${gift.amount}-coin Jaylive gift card.`;
 }
 
 async function loadMessages() {
@@ -220,6 +272,7 @@ channelButtons.forEach((button) => {
     chatDescription.textContent = channel === "self"
       ? "A private channel only you can see."
       : "Global room for logged-in Jaylub users. Messages update automatically.";
+    openGiftDialogButton.hidden = channel !== "global";
     channelButtons.forEach((tab) => {
       const selected = tab === button;
       tab.classList.toggle("is-active", selected);
@@ -227,6 +280,112 @@ channelButtons.forEach((button) => {
     });
     loadMessages();
   });
+});
+
+function updateGiftRecipientVisibility() {
+  const directGift = giftType.value === "direct";
+  giftRecipientField.hidden = !directGift;
+  giftRecipient.disabled = !directGift || giftRecipient.options.length === 0;
+  giftRecipient.required = directGift;
+}
+
+async function loadGiftRecipients() {
+  const response = await fetch("/chat/gift-recipients", {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) {
+    throw new Error("Could not load gift recipients.");
+  }
+  const data = await response.json();
+  giftRecipient.replaceChildren();
+  for (const recipient of data.recipients || []) {
+    const option = document.createElement("option");
+    option.value = String(recipient.id);
+    option.textContent = recipient.username;
+    giftRecipient.append(option);
+  }
+  updateGiftRecipientVisibility();
+}
+
+openGiftDialogButton.addEventListener("click", async () => {
+  clearError();
+  try {
+    await loadGiftRecipients();
+    updateGiftRecipientVisibility();
+    giftDialog.showModal();
+  } catch (error) {
+    showError(error.message);
+  }
+});
+
+giftType.addEventListener("change", updateGiftRecipientVisibility);
+document.getElementById("cancel-gift").addEventListener("click", () => giftDialog.close());
+
+giftForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const submitButton = giftForm.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  try {
+    const response = await fetch("/chat/gift", {
+      method: "POST",
+      headers: { "Accept": "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: giftType.value,
+        amount: Number(giftAmount.value),
+        recipientId: Number(giftRecipient.value) || 0,
+      }),
+    });
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(error.trim() || "Could not send gift.");
+    }
+    const data = await response.json();
+    if (data.message && activeChannel === "global") appendMessage(data.message);
+    giftForm.reset();
+    updateGiftRecipientVisibility();
+    giftDialog.close();
+  } catch (error) {
+    showError(error.message.trim() || "Could not send gift.");
+  } finally {
+    submitButton.disabled = false;
+  }
+});
+
+messageList.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-claim-gift]");
+  if (!button) return;
+  button.disabled = true;
+  let alreadyClaimed = false;
+  try {
+    const response = await fetch("/chat/gift/claim", {
+      method: "POST",
+      headers: { "Accept": "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ giftId: Number(button.dataset.claimGift) }),
+    });
+    if (!response.ok) {
+      const error = await response.text();
+      alreadyClaimed = response.status === 409;
+      button.textContent = response.status === 410 ? "Expired" : alreadyClaimed ? "Already claimed" : "Try again";
+      if (response.status === 410) {
+        button.closest(".message")?.querySelector(".gift-event-description")?.replaceChildren("This gift card has expired.");
+      }
+      throw new Error(error.trim() || "Could not claim gift card.");
+    }
+    const data = await response.json();
+    button.textContent = "Claimed by you";
+    const giftCard = button.closest(".message");
+    if (giftCard) {
+      const description = giftCard.querySelector(".gift-event-description");
+      if (description) description.textContent = "You claimed this gift card.";
+    }
+    if (data.message) appendMessage(data.message);
+  } catch (error) {
+    showError(error.message.trim() || "Could not claim gift card.");
+  } finally {
+    if (button.isConnected) {
+      button.disabled = alreadyClaimed || button.textContent === "Claimed by you" || button.textContent === "Expired";
+    }
+  }
 });
 
 chatForm.addEventListener("submit", async (event) => {

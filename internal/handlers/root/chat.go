@@ -24,6 +24,7 @@ import (
 
 const (
 	chatMaxMessageLength = 500
+	chatMaxGiftAmount    = 1000000
 	chatMaxFileSize      = 25 << 20
 	chatMultipartMemory  = 1 << 20
 	chatRecentLimit      = 100
@@ -35,10 +36,19 @@ const (
 )
 
 var errChatFileTooLarge = errors.New("Files must be 25 MB or smaller.")
+var (
+	errInsufficientGiftCoins = errors.New("insufficient Jaylive coins")
+	errInvalidGiftRecipient  = errors.New("invalid gift recipient")
+	errGiftAlreadyClaimed    = errors.New("gift card already claimed")
+	errGiftNotFound          = errors.New("gift card not found")
+	errOwnGiftCard           = errors.New("cannot claim own gift card")
+	errGiftExpired           = errors.New("gift card expired")
+)
 
 type ChatService struct {
 	db          *sql.DB
 	mu          sync.Mutex
+	giftMu      sync.Mutex
 	cleanupMu   sync.Mutex
 	lastPost    map[string]time.Time
 	lastActive  map[string]time.Time
@@ -102,6 +112,23 @@ type ChatMessage struct {
 	Message     string           `json:"message"`
 	Timestamp   string           `json:"timestamp"`
 	Attachments []ChatAttachment `json:"attachments,omitempty"`
+	Gift        *ChatCoinGift    `json:"gift,omitempty"`
+}
+
+type ChatCoinGift struct {
+	ID                int64  `json:"id"`
+	Type              string `json:"type"`
+	Amount            int    `json:"amount"`
+	SenderUsername    string `json:"senderUsername"`
+	RecipientUsername string `json:"recipientUsername,omitempty"`
+	ClaimedByUsername string `json:"claimedByUsername,omitempty"`
+	Claimed           bool   `json:"claimed"`
+	Expired           bool   `json:"expired"`
+}
+
+type chatRecipient struct {
+	ID       int64  `json:"id"`
+	Username string `json:"username"`
 }
 
 type ChatAttachment struct {
@@ -129,6 +156,364 @@ func (s *ChatService) Page(w http.ResponseWriter, r *http.Request) {
 	}
 	s.markRead(r)
 	renderer.Render(w, r, "chat")
+}
+
+func (s *ChatService) GiftRecipients(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	rows, err := s.db.Query(`SELECT id, username FROM users WHERE id != ? ORDER BY username COLLATE NOCASE`, user.ID)
+	if err != nil {
+		http.Error(w, "Could not load gift recipients.", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	recipients := make([]chatRecipient, 0)
+	for rows.Next() {
+		var recipient chatRecipient
+		if err := rows.Scan(&recipient.ID, &recipient.Username); err != nil {
+			http.Error(w, "Could not load gift recipients.", http.StatusInternalServerError)
+			return
+		}
+		recipients = append(recipients, recipient)
+	}
+	if err := rows.Err(); err != nil {
+		http.Error(w, "Could not load gift recipients.", http.StatusInternalServerError)
+		return
+	}
+	s.writeJSON(w, map[string]any{"recipients": recipients})
+}
+
+func (s *ChatService) GiftCoins(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !sameOriginRequest(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var payload struct {
+		Type        string `json:"type"`
+		Amount      int    `json:"amount"`
+		RecipientID int64  `json:"recipientId"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2048)).Decode(&payload); err != nil {
+		http.Error(w, "Invalid gift request.", http.StatusBadRequest)
+		return
+	}
+	if payload.Amount <= 0 || payload.Amount > chatMaxGiftAmount {
+		http.Error(w, "Gift amount must be between 1 and 1,000,000 coins.", http.StatusBadRequest)
+		return
+	}
+	if payload.Type != "direct" && payload.Type != "card" {
+		http.Error(w, "Invalid gift type.", http.StatusBadRequest)
+		return
+	}
+	if payload.Type == "direct" && (payload.RecipientID <= 0 || payload.RecipientID == user.ID) {
+		http.Error(w, "Choose another user to receive this gift.", http.StatusBadRequest)
+		return
+	}
+
+	if !s.allowPost(strconv.FormatInt(user.ID, 10) + ":gift") {
+		http.Error(w, "Please wait before sending another gift.", http.StatusTooManyRequests)
+		return
+	}
+	response, err := s.createCoinGift(user, payload.Type, payload.Amount, payload.RecipientID)
+	if err != nil {
+		s.releasePost(strconv.FormatInt(user.ID, 10) + ":gift")
+		switch {
+		case errors.Is(err, errInsufficientGiftCoins):
+			http.Error(w, "You do not have enough Jaylive coins.", http.StatusBadRequest)
+		case errors.Is(err, errInvalidGiftRecipient):
+			http.Error(w, "That gift recipient is not available.", http.StatusBadRequest)
+		default:
+			http.Error(w, "Could not create coin gift.", http.StatusInternalServerError)
+		}
+		return
+	}
+	s.writeJSON(w, response)
+}
+
+func (s *ChatService) ClaimGiftCard(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !sameOriginRequest(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var payload struct {
+		GiftID int64 `json:"giftId"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2048)).Decode(&payload); err != nil || payload.GiftID <= 0 {
+		http.Error(w, "Invalid gift card.", http.StatusBadRequest)
+		return
+	}
+	result, err := s.claimCoinGift(user, payload.GiftID)
+	if err != nil {
+		switch {
+		case errors.Is(err, errOwnGiftCard):
+			http.Error(w, "You cannot claim your own gift card.", http.StatusForbidden)
+		case errors.Is(err, errGiftAlreadyClaimed):
+			http.Error(w, "This gift card has already been claimed.", http.StatusConflict)
+		case errors.Is(err, errGiftExpired):
+			http.Error(w, "This gift card has expired.", http.StatusGone)
+		case errors.Is(err, errGiftNotFound):
+			http.Error(w, "Gift card not found.", http.StatusNotFound)
+		default:
+			http.Error(w, "Could not claim gift card.", http.StatusInternalServerError)
+		}
+		return
+	}
+	s.writeJSON(w, result)
+}
+
+func (s *ChatService) createCoinGift(user auth.User, giftType string, amount int, recipientID int64) (map[string]any, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`
+		INSERT INTO game_profiles (user_id, username)
+		VALUES (?, ?)
+		ON CONFLICT(user_id) DO NOTHING
+	`, user.ID, user.Username); err != nil {
+		return nil, err
+	}
+	result, err := tx.Exec(`
+		UPDATE game_profiles SET gold = gold - ?
+		WHERE user_id = ? AND gold >= ?
+	`, amount, user.ID, amount)
+	if err != nil {
+		return nil, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if rowsAffected != 1 {
+		return nil, errInsufficientGiftCoins
+	}
+
+	var recipientUsername string
+	if giftType == "direct" {
+		err := tx.QueryRow(`SELECT username FROM users WHERE id = ? AND id != ?`, recipientID, user.ID).
+			Scan(&recipientUsername)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errInvalidGiftRecipient
+		}
+		if err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO game_profiles (user_id, username)
+			VALUES (?, ?)
+			ON CONFLICT(user_id) DO NOTHING
+		`, recipientID, recipientUsername); err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(`
+			UPDATE game_profiles SET gold = gold + ?
+			WHERE user_id = ?
+		`, amount, recipientID); err != nil {
+			return nil, err
+		}
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	messageText := fmt.Sprintf("%s created a Jaylive coin gift card.", user.Username)
+	if giftType == "direct" {
+		messageText = fmt.Sprintf("%s sent %d Jaylive coins to %s.", user.Username, amount, recipientUsername)
+	}
+	messageResult, err := tx.Exec(`
+		INSERT INTO chat_messages (username, message, timestamp) VALUES (?, ?, ?)
+	`, user.Username, messageText, now)
+	if err != nil {
+		return nil, err
+	}
+	messageID, err := messageResult.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+
+	var recipientUserID any
+	var recipientName any
+	if giftType == "direct" {
+		recipientUserID = recipientID
+		recipientName = recipientUsername
+	}
+	giftResult, err := tx.Exec(`
+		INSERT INTO chat_coin_gifts (
+			message_id, gift_type, amount, sender_user_id, sender_username,
+			recipient_user_id, recipient_username, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, messageID, giftType, amount, user.ID, user.Username, recipientUserID, recipientName, now)
+	if err != nil {
+		return nil, err
+	}
+	giftID, err := giftResult.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	gift := &ChatCoinGift{
+		ID:                giftID,
+		Type:              giftType,
+		Amount:            amount,
+		SenderUsername:    user.Username,
+		RecipientUsername: recipientUsername,
+	}
+	message := ChatMessage{
+		ID:        messageID,
+		Username:  user.Username,
+		Message:   messageText,
+		Timestamp: now,
+		Gift:      gift,
+	}
+	return map[string]any{"message": message}, nil
+}
+
+func (s *ChatService) claimCoinGift(user auth.User, giftID int64) (map[string]any, error) {
+	s.giftMu.Lock()
+	defer s.giftMu.Unlock()
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	result, err := tx.Exec(`
+		UPDATE chat_coin_gifts
+		SET claimed_by_user_id = ?, claimed_by_username = ?
+		WHERE id = ? AND gift_type = 'card' AND claimed_by_user_id IS NULL
+			AND sender_user_id != ? AND created_at >= ?
+	`, user.ID, user.Username, giftID, user.ID, time.Now().UTC().Add(-chatRetention).Format(time.RFC3339))
+	if err != nil {
+		return nil, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if rowsAffected != 1 {
+		var giftType string
+		var senderID int64
+		var claimedBy sql.NullInt64
+		var createdAt string
+		err := tx.QueryRow(`
+			SELECT gift_type, sender_user_id, claimed_by_user_id, created_at
+			FROM chat_coin_gifts
+			WHERE id = ?
+		`, giftID).Scan(&giftType, &senderID, &claimedBy, &createdAt)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errGiftNotFound
+		}
+		if err != nil {
+			return nil, err
+		}
+		if giftType == "card" && senderID == user.ID && !claimedBy.Valid {
+			return nil, errOwnGiftCard
+		}
+		if giftType == "card" && !claimedBy.Valid {
+			expiresAt, err := time.Parse(time.RFC3339, createdAt)
+			if err != nil {
+				return nil, err
+			}
+			if time.Now().UTC().After(expiresAt.Add(chatRetention)) {
+				return nil, errGiftExpired
+			}
+		}
+		return nil, errGiftAlreadyClaimed
+	}
+
+	var amount int
+	var senderUsername string
+	if err := tx.QueryRow(`
+		SELECT amount, sender_username
+		FROM chat_coin_gifts
+		WHERE id = ?
+	`, giftID).Scan(&amount, &senderUsername); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO game_profiles (user_id, username)
+		VALUES (?, ?)
+		ON CONFLICT(user_id) DO NOTHING
+	`, user.ID, user.Username); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(`UPDATE game_profiles SET gold = gold + ? WHERE user_id = ?`, amount, user.ID); err != nil {
+		return nil, err
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	messageText := fmt.Sprintf("%s claimed a %d-coin Jaylive gift card from %s.", user.Username, amount, senderUsername)
+	messageResult, err := tx.Exec(`
+		INSERT INTO chat_messages (username, message, timestamp) VALUES (?, ?, ?)
+	`, user.Username, messageText, now)
+	if err != nil {
+		return nil, err
+	}
+	claimMessageID, err := messageResult.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(`UPDATE chat_coin_gifts SET claim_message_id = ? WHERE id = ?`, claimMessageID, giftID); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	gift := &ChatCoinGift{
+		ID:                giftID,
+		Type:              "claim",
+		Amount:            amount,
+		SenderUsername:    senderUsername,
+		RecipientUsername: user.Username,
+		Claimed:           true,
+		ClaimedByUsername: user.Username,
+	}
+	return map[string]any{
+		"message": ChatMessage{
+			ID:        claimMessageID,
+			Username:  user.Username,
+			Message:   messageText,
+			Timestamp: now,
+			Gift:      gift,
+		},
+	}, nil
 }
 
 func (s *ChatService) Messages(w http.ResponseWriter, r *http.Request) {
@@ -409,7 +794,10 @@ func (s *ChatService) recentMessages(afterID int64) ([]ChatMessage, error) {
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
-	return messages, s.loadAttachments(messages)
+	if err := s.loadAttachments(messages); err != nil {
+		return nil, err
+	}
+	return messages, s.loadGiftEvents(messages)
 }
 
 func (s *ChatService) messagesAfter(afterID int64) ([]ChatMessage, error) {
@@ -439,7 +827,72 @@ func (s *ChatService) messagesAfter(afterID int64) ([]ChatMessage, error) {
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
-	return messages, s.loadAttachments(messages)
+	if err := s.loadAttachments(messages); err != nil {
+		return nil, err
+	}
+	return messages, s.loadGiftEvents(messages)
+}
+
+func (s *ChatService) loadGiftEvents(messages []ChatMessage) error {
+	if len(messages) == 0 {
+		return nil
+	}
+
+	messageIndexes := make(map[int64]int, len(messages))
+	placeholders := make([]string, len(messages))
+	args := make([]any, 0, len(messages)*2)
+	for index := range messages {
+		messageIndexes[messages[index].ID] = index
+		placeholders[index] = "?"
+		args = append(args, messages[index].ID)
+	}
+	args = append(args, args[:len(messages)]...)
+
+	rows, err := s.db.Query(`
+		SELECT message_id, id, gift_type, amount, sender_username,
+			COALESCE(recipient_username, ''), COALESCE(claimed_by_username, ''),
+			claimed_by_user_id IS NOT NULL, created_at, 'gift'
+		FROM chat_coin_gifts
+		WHERE message_id IN (`+strings.Join(placeholders, ",")+`)
+		UNION ALL
+		SELECT claim_message_id, id, gift_type, amount, sender_username,
+			COALESCE(recipient_username, ''), COALESCE(claimed_by_username, ''),
+			claimed_by_user_id IS NOT NULL, created_at, 'claim'
+		FROM chat_coin_gifts
+		WHERE claim_message_id IN (`+strings.Join(placeholders, ",")+`)
+	`, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var messageID int64
+		var gift ChatCoinGift
+		var createdAt string
+		var eventType string
+		if err := rows.Scan(
+			&messageID, &gift.ID, &gift.Type, &gift.Amount, &gift.SenderUsername,
+			&gift.RecipientUsername, &gift.ClaimedByUsername, &gift.Claimed, &createdAt, &eventType,
+		); err != nil {
+			return err
+		}
+		if gift.Type == "card" && !gift.Claimed {
+			created, err := time.Parse(time.RFC3339, createdAt)
+			if err != nil {
+				return err
+			}
+			gift.Expired = time.Now().UTC().After(created.Add(chatRetention))
+		}
+		if eventType == "claim" {
+			gift.Type = "claim"
+			gift.RecipientUsername = gift.ClaimedByUsername
+		}
+		if index, exists := messageIndexes[messageID]; exists {
+			messages[index].Gift = &gift
+		}
+	}
+	return rows.Err()
 }
 
 func (s *ChatService) recentSelfMessages(userID, afterID int64) ([]ChatMessage, error) {
@@ -637,6 +1090,34 @@ func (s *ChatService) cleanupExpired() error {
 
 	if _, err := tx.Exec(`
 		DELETE FROM chat_attachments
+		WHERE message_id IN (SELECT id FROM chat_messages WHERE timestamp < ?)
+	`, cutoff); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`
+		UPDATE game_profiles
+		SET gold = gold + (
+			SELECT COALESCE(SUM(g.amount), 0)
+			FROM chat_coin_gifts g
+			JOIN chat_messages m ON m.id = g.message_id
+			WHERE g.sender_user_id = game_profiles.user_id
+				AND g.gift_type = 'card'
+				AND g.claimed_by_user_id IS NULL
+				AND m.timestamp < ?
+		)
+		WHERE user_id IN (
+			SELECT g.sender_user_id
+			FROM chat_coin_gifts g
+			JOIN chat_messages m ON m.id = g.message_id
+			WHERE g.gift_type = 'card'
+				AND g.claimed_by_user_id IS NULL
+				AND m.timestamp < ?
+		)
+	`, cutoff, cutoff); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`
+		DELETE FROM chat_coin_gifts
 		WHERE message_id IN (SELECT id FROM chat_messages WHERE timestamp < ?)
 	`, cutoff); err != nil {
 		return err

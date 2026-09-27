@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -150,6 +151,201 @@ func TestSelfChatIsIsolatedAndLeavesGlobalMessagesUntouched(t *testing.T) {
 	}
 	if globalCount != 1 || selfCount != 1 {
 		t.Fatalf("stored message counts: global=%d self=%d; want 1 each", globalCount, selfCount)
+	}
+}
+
+func TestCoinGiftsDebitCreditAndClaimCardsOnlyOnce(t *testing.T) {
+	service, err := auth.New(filepath.Join(t.TempDir(), "users.db"))
+	if err != nil {
+		t.Fatalf("create test database: %v", err)
+	}
+	defer service.Close()
+
+	accounts := []struct {
+		user auth.User
+		gold int
+	}{
+		{user: auth.User{Username: "giver"}, gold: 100},
+		{user: auth.User{Username: "receiver"}, gold: 0},
+		{user: auth.User{Username: "claimer"}, gold: 0},
+	}
+	for index := range accounts {
+		result, err := service.DB().Exec(
+			`INSERT INTO users (username, password_hash) VALUES (?, ?)`,
+			accounts[index].user.Username, "unused",
+		)
+		if err != nil {
+			t.Fatalf("insert %s: %v", accounts[index].user.Username, err)
+		}
+		accounts[index].user.ID, err = result.LastInsertId()
+		if err != nil {
+			t.Fatalf("get %s ID: %v", accounts[index].user.Username, err)
+		}
+		if _, err := service.DB().Exec(
+			`INSERT INTO game_profiles (user_id, username, gold) VALUES (?, ?, ?)`,
+			accounts[index].user.ID, accounts[index].user.Username, accounts[index].gold,
+		); err != nil {
+			t.Fatalf("create %s game profile: %v", accounts[index].user.Username, err)
+		}
+	}
+
+	chat := NewChatService(service.DB())
+	if _, err := chat.createCoinGift(accounts[0].user, "direct", 30, accounts[1].user.ID); err != nil {
+		t.Fatalf("create direct gift: %v", err)
+	}
+	if _, err := chat.createCoinGift(accounts[0].user, "card", 25, 0); err != nil {
+		t.Fatalf("create gift card: %v", err)
+	}
+
+	var giverGold, receiverGold int
+	if err := service.DB().QueryRow(`SELECT gold FROM game_profiles WHERE user_id = ?`, accounts[0].user.ID).Scan(&giverGold); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.DB().QueryRow(`SELECT gold FROM game_profiles WHERE user_id = ?`, accounts[1].user.ID).Scan(&receiverGold); err != nil {
+		t.Fatal(err)
+	}
+	if giverGold != 45 || receiverGold != 30 {
+		t.Fatalf("balances after gifts: giver=%d receiver=%d; want 45 and 30", giverGold, receiverGold)
+	}
+
+	var giftID int64
+	if err := service.DB().QueryRow(`SELECT id FROM chat_coin_gifts WHERE gift_type = 'card'`).Scan(&giftID); err != nil {
+		t.Fatalf("get card ID: %v", err)
+	}
+	if _, err := chat.claimCoinGift(accounts[0].user, giftID); !errors.Is(err, errOwnGiftCard) {
+		t.Fatalf("sender self-claim error = %v, want cannot claim own card", err)
+	}
+	if _, err := chat.claimCoinGift(accounts[2].user, giftID); err != nil {
+		t.Fatalf("claim gift card: %v", err)
+	}
+	if _, err := chat.claimCoinGift(accounts[1].user, giftID); !errors.Is(err, errGiftAlreadyClaimed) {
+		t.Fatalf("second claim error = %v, want already claimed", err)
+	}
+
+	var claimerGold int
+	if err := service.DB().QueryRow(`SELECT gold FROM game_profiles WHERE user_id = ?`, accounts[2].user.ID).Scan(&claimerGold); err != nil {
+		t.Fatal(err)
+	}
+	if claimerGold != 25 {
+		t.Fatalf("claimer balance = %d, want exactly 25", claimerGold)
+	}
+
+	messages, err := chat.recentMessages(0)
+	if err != nil {
+		t.Fatalf("load gift events in global chat: %v", err)
+	}
+	if len(messages) != 3 {
+		t.Fatalf("global chat message count = %d, want direct gift, card, and claim events", len(messages))
+	}
+	if messages[0].Gift == nil || messages[0].Gift.Type != "direct" || messages[0].Gift.RecipientUsername != "receiver" {
+		t.Errorf("direct gift event = %#v", messages[0].Gift)
+	}
+	if messages[1].Gift == nil || messages[1].Gift.Type != "card" || !messages[1].Gift.Claimed || messages[1].Gift.ClaimedByUsername != "claimer" {
+		t.Errorf("gift card event = %#v", messages[1].Gift)
+	}
+	if messages[2].Gift == nil || messages[2].Gift.Type != "claim" || messages[2].Gift.RecipientUsername != "claimer" {
+		t.Errorf("claim event = %#v", messages[2].Gift)
+	}
+
+	if _, err := chat.createCoinGift(accounts[1].user, "direct", 31, accounts[0].user.ID); !errors.Is(err, errInsufficientGiftCoins) {
+		t.Fatalf("overspend gift error = %v, want insufficient funds", err)
+	}
+	var messageCount int
+	if err := service.DB().QueryRow(`SELECT COUNT(*) FROM chat_messages`).Scan(&messageCount); err != nil {
+		t.Fatal(err)
+	}
+	if messageCount != 3 {
+		t.Fatalf("failed gift created %d chat events, want no additional transaction", messageCount)
+	}
+
+	if _, err := chat.createCoinGift(accounts[0].user, "card", 10, 0); err != nil {
+		t.Fatalf("create expiring gift card: %v", err)
+	}
+	var expiredGiftID int64
+	if err := service.DB().QueryRow(`SELECT id FROM chat_coin_gifts WHERE amount = 10`).Scan(&expiredGiftID); err != nil {
+		t.Fatalf("get expiring gift card ID: %v", err)
+	}
+	expiredAt := time.Now().UTC().Add(-chatRetention - time.Second).Format(time.RFC3339)
+	if _, err := service.DB().Exec(`UPDATE chat_coin_gifts SET created_at = ? WHERE id = ?`, expiredAt, expiredGiftID); err != nil {
+		t.Fatalf("expire gift card: %v", err)
+	}
+	if _, err := chat.claimCoinGift(accounts[1].user, expiredGiftID); !errors.Is(err, errGiftExpired) {
+		t.Fatalf("expired gift claim error = %v, want expired", err)
+	}
+}
+
+func TestConcurrentGiftCardClaimsCreditOnlyOneUser(t *testing.T) {
+	service, err := auth.New(filepath.Join(t.TempDir(), "users.db"))
+	if err != nil {
+		t.Fatalf("create test database: %v", err)
+	}
+	defer service.Close()
+
+	users := make([]auth.User, 3)
+	for index, username := range []string{"sender", "first", "second"} {
+		result, err := service.DB().Exec(`INSERT INTO users (username, password_hash) VALUES (?, ?)`, username, "unused")
+		if err != nil {
+			t.Fatalf("insert %s: %v", username, err)
+		}
+		users[index] = auth.User{Username: username}
+		users[index].ID, err = result.LastInsertId()
+		if err != nil {
+			t.Fatalf("get %s ID: %v", username, err)
+		}
+		if _, err := service.DB().Exec(
+			`INSERT INTO game_profiles (user_id, username, gold) VALUES (?, ?, ?)`,
+			users[index].ID, username, 100,
+		); err != nil {
+			t.Fatalf("create %s game profile: %v", username, err)
+		}
+	}
+
+	chat := NewChatService(service.DB())
+	if _, err := chat.createCoinGift(users[0], "card", 40, 0); err != nil {
+		t.Fatalf("create gift card: %v", err)
+	}
+	var giftID int64
+	if err := service.DB().QueryRow(`SELECT id FROM chat_coin_gifts`).Scan(&giftID); err != nil {
+		t.Fatalf("get gift card ID: %v", err)
+	}
+
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	var wait sync.WaitGroup
+	for _, user := range users[1:] {
+		wait.Add(1)
+		go func(user auth.User) {
+			defer wait.Done()
+			<-start
+			_, err := chat.claimCoinGift(user, giftID)
+			results <- err
+		}(user)
+	}
+	close(start)
+	wait.Wait()
+	close(results)
+
+	successes := 0
+	for err := range results {
+		if err == nil {
+			successes++
+		} else if !errors.Is(err, errGiftAlreadyClaimed) {
+			t.Errorf("concurrent claim error = %v, want success or already claimed", err)
+		}
+	}
+	if successes != 1 {
+		t.Fatalf("successful concurrent claims = %d, want exactly one", successes)
+	}
+
+	var totalRecipientGold int
+	if err := service.DB().QueryRow(
+		`SELECT SUM(gold) FROM game_profiles WHERE user_id IN (?, ?)`,
+		users[1].ID, users[2].ID,
+	).Scan(&totalRecipientGold); err != nil {
+		t.Fatalf("sum recipient balances: %v", err)
+	}
+	if totalRecipientGold != 240 {
+		t.Fatalf("combined recipient gold = %d, want initial 200 plus one 40-coin claim", totalRecipientGold)
 	}
 }
 
@@ -367,6 +563,80 @@ func TestCleanupExpiredRemovesAttachmentMetadataAndFiles(t *testing.T) {
 	}
 	if _, err := os.Stat(filePath); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("expired attachment file still exists or could not be checked: %v", err)
+	}
+}
+
+func TestCleanupExpiredRefundsAndDeletesUnclaimedGiftCardsOnce(t *testing.T) {
+	t.Parallel()
+
+	service, err := auth.New(filepath.Join(t.TempDir(), "users.db"))
+	if err != nil {
+		t.Fatalf("create test database: %v", err)
+	}
+	defer service.Close()
+
+	result, err := service.DB().Exec(
+		`INSERT INTO users (username, password_hash) VALUES (?, ?)`,
+		"gift-sender", "unused",
+	)
+	if err != nil {
+		t.Fatalf("insert gift sender: %v", err)
+	}
+	userID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("get gift sender ID: %v", err)
+	}
+	if _, err := service.DB().Exec(
+		`INSERT INTO game_profiles (user_id, username, gold) VALUES (?, ?, ?)`,
+		userID, "gift-sender", 15,
+	); err != nil {
+		t.Fatalf("create sender profile: %v", err)
+	}
+	oldTimestamp := time.Now().UTC().Add(-chatRetention - time.Hour).Format(time.RFC3339)
+	result, err = service.DB().Exec(
+		`INSERT INTO chat_messages (username, message, timestamp) VALUES (?, ?, ?)`,
+		"gift-sender", "expired gift card", oldTimestamp,
+	)
+	if err != nil {
+		t.Fatalf("insert expired card message: %v", err)
+	}
+	messageID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("get card message ID: %v", err)
+	}
+	if _, err := service.DB().Exec(`
+		INSERT INTO chat_coin_gifts (message_id, gift_type, amount, sender_user_id, sender_username, created_at)
+		VALUES (?, 'card', ?, ?, ?, ?)
+	`, messageID, 40, userID, "gift-sender", oldTimestamp); err != nil {
+		t.Fatalf("insert expired gift card: %v", err)
+	}
+
+	chat := NewChatService(service.DB())
+	chat.filesDir = filepath.Join(t.TempDir(), "files")
+	if err := chat.cleanupExpired(); err != nil {
+		t.Fatalf("cleanup expired chat: %v", err)
+	}
+
+	var gold, giftCount int
+	if err := service.DB().QueryRow(`SELECT gold FROM game_profiles WHERE user_id = ?`, userID).Scan(&gold); err != nil {
+		t.Fatalf("read refunded balance: %v", err)
+	}
+	if err := service.DB().QueryRow(`SELECT COUNT(*) FROM chat_coin_gifts`).Scan(&giftCount); err != nil {
+		t.Fatalf("count remaining gift cards: %v", err)
+	}
+	if gold != 55 || giftCount != 0 {
+		t.Fatalf("after cleanup: gold=%d gift records=%d; want 55 and 0", gold, giftCount)
+	}
+
+	chat.lastCleanup = time.Time{}
+	if err := chat.cleanupExpired(); err != nil {
+		t.Fatalf("repeat cleanup: %v", err)
+	}
+	if err := service.DB().QueryRow(`SELECT gold FROM game_profiles WHERE user_id = ?`, userID).Scan(&gold); err != nil {
+		t.Fatalf("read balance after repeat cleanup: %v", err)
+	}
+	if gold != 55 {
+		t.Fatalf("repeated cleanup refunded twice: gold=%d, want 55", gold)
 	}
 }
 

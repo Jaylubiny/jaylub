@@ -183,6 +183,142 @@
   background: rgba(14, 165, 233, 0.08);
 }
 
+.gift-message {
+  border-color: rgba(213, 164, 58, 0.42);
+}
+
+.gift-event {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: rgba(213, 164, 58, 0.08);
+  border: 1px solid rgba(213, 164, 58, 0.24);
+  border-radius: 8px;
+}
+
+.gift-event-description {
+  margin: 0;
+  color: #f1d879;
+  font-weight: 700;
+}
+
+.gift-claim-button,
+.gift-open-button {
+  min-height: 40px;
+  padding: 8px 14px;
+  color: #111827;
+  background: #f1d879;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.gift-claim-button:hover,
+.gift-open-button:hover {
+  background: #f8e7a0;
+}
+
+.gift-claim-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.chat-actions .gift-open-button {
+  min-width: 0;
+  min-height: 76px;
+  padding: 8px;
+  font-size: 0.95rem;
+}
+
+.coin-gift-dialog {
+  position: fixed;
+  inset: 50% auto auto 50%;
+  max-height: calc(100dvh - 32px);
+  margin: 0;
+  overflow-y: auto;
+  transform: translate(-50%, -50%);
+  width: min(440px, calc(100vw - 32px));
+  padding: 0;
+  color: var(--text);
+  background: #111827;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  border-radius: 14px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+}
+
+.coin-gift-dialog::backdrop {
+  background: rgba(2, 6, 23, 0.72);
+  backdrop-filter: blur(3px);
+}
+
+.coin-gift-form {
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+}
+
+.coin-gift-form h2 {
+  margin: 0;
+  color: #f1d879;
+}
+
+.coin-gift-form label {
+  display: grid;
+  gap: 6px;
+  color: #cbd5e1;
+  font-weight: 700;
+}
+
+.coin-gift-form select,
+.coin-gift-form input {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 10px;
+  color: var(--text);
+  background: rgba(2, 6, 23, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 7px;
+}
+
+.coin-gift-form option {
+  color: #111827;
+}
+
+.gift-dialog-note {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+
+.gift-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.gift-dialog-actions button {
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.gift-dialog-actions button[type="button"] {
+  color: #e2e8f0;
+  background: #334155;
+}
+
+.gift-dialog-actions button[type="submit"] {
+  color: #111827;
+  background: #f1d879;
+}
+
 .message-meta {
   display: flex;
   align-items: baseline;
@@ -234,7 +370,7 @@
 .chat-actions {
   display: grid;
   min-height: 76px;
-  grid-template-columns: minmax(64px, 0.7fr) minmax(120px, 1.3fr);
+  grid-template-columns: minmax(52px, 1fr) minmax(72px, 1fr) minmax(92px, 1.3fr);
   gap: 8px;
 }
 
@@ -385,5 +521,11 @@
   .chat-actions,
   .chat-compose button {
     min-height: 56px;
+  }
+
+  .chat-actions .gift-open-button {
+    min-height: 56px;
+    padding: 6px;
+    font-size: 0.85rem;
   }
 }
