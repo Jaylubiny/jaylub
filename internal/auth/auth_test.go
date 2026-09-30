@@ -89,6 +89,36 @@ func TestSQLiteConnectionsEnableForeignKeysAndWAL(t *testing.T) {
 	}
 }
 
+func TestNewAcceptsRelativeDatabasePath(t *testing.T) {
+	originalWorkingDirectory, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	temporaryDirectory := t.TempDir()
+	if err := os.Chdir(temporaryDirectory); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(originalWorkingDirectory); err != nil {
+			t.Errorf("restore working directory: %v", err)
+		}
+	})
+
+	service, err := New("internal/database/users.db")
+	if err != nil {
+		t.Fatalf("New() with relative path error = %v", err)
+	}
+	defer service.Close()
+
+	var userCount int
+	if err := service.db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&userCount); err != nil {
+		t.Fatal(err)
+	}
+	if userCount != 0 {
+		t.Fatalf("relative-path database contains %d users, want 0", userCount)
+	}
+}
+
 func TestMiddlewareAllowsPublicHomeButKeepsApplicationProtected(t *testing.T) {
 	service, err := New(filepath.Join(t.TempDir(), "users.db"))
 	if err != nil {

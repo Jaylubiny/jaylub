@@ -60,6 +60,12 @@ type Service struct {
 }
 
 func New(dbPath string) (*Service, error) {
+	absoluteDBPath, err := filepath.Abs(dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("resolve database path: %w", err)
+	}
+	dbPath = absoluteDBPath
+
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
 		return nil, err
 	}
