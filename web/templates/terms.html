@@ -1,0 +1,54 @@
+{{define "head"}}
+<link rel="stylesheet" href="/web/static/css/terms.css">
+{{end}}
+
+{{define "content"}}
+<section class="terms-page">
+    <header class="terms-header">
+        <h1>TERMS AND CONDITIONS</h1>
+        <p>Please read these terms carefully. Acceptance is required to use this private website.</p>
+    </header>
+
+    <article class="terms-card">
+        <p class="terms-version">Version {{.TermsVersion}}</p>
+
+        <h2>1. Private, account-based access</h2>
+        <p>This website is intended for invited users with their own accounts. Access is personal and may be limited or withdrawn to protect the privacy, security, and operation of the website.</p>
+
+        <h2>2. Keep the website and its content private</h2>
+        <p>Do not publish, distribute, or share non-public pages, messages, files, screenshots, or other website content with people who are not authorized users, unless you have permission from the site owner.</p>
+
+        <h2>3. Do not disclose private access</h2>
+        <p>Do not share invitation links or disclose private access details to people who are not authorized to use the website. Respect requests to keep the website and its non-public information confidential.</p>
+
+        <h2>4. Protect your account</h2>
+        <p>Keep your credentials secret and do not let another person use your account. You are responsible for activity carried out through your account. Contact the site owner promptly if you suspect unauthorized access.</p>
+
+        <h2>5. Use the website responsibly</h2>
+        <p>Do not misuse the website or its limited-access features, interfere with its operation, attempt to access another user's account or data, or use it unlawfully or to harm others.</p>
+
+        <h2>6. Violations and access</h2>
+        <p>If these terms are violated, the site owner may restrict or end access to the website. These terms do not create an automatic monetary fine. Any legal rights or remedies must be determined under applicable law.</p>
+
+        <h2>7. Changes and availability</h2>
+        <p>Website features and stored content may change or become unavailable. When a material change to these terms requires renewed acceptance, you will be asked to review the new version before continuing.</p>
+
+        <h2>8. Contact</h2>
+        <p>Questions about these terms can be sent to <a href="mailto:support@jaylub.com">support@jaylub.com</a>.</p>
+
+    </article>
+
+    <form class="terms-accept-form" method="post" action="/terms">
+        <label class="terms-checkbox">
+            <input type="checkbox" name="accept_terms" value="yes" required>
+            <span>I have read and agree to the Terms and Conditions.</span>
+        </label>
+        <div class="terms-actions">
+            <button type="submit">Accept and continue</button>
+        </div>
+    </form>
+    <form class="terms-decline-form" method="post" action="/logout">
+        <button type="submit">Log out instead</button>
+    </form>
+</section>
+{{end}}

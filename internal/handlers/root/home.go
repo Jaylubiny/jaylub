@@ -43,6 +43,7 @@ var (
 	Services    = renderer.Page("services")
 	Wiki_C      = renderer.Page("wiki_c")
 	Wiki_Jaylub = renderer.Page("wiki_jaylub")
+	Wiki_Jaylub1= renderer.Page("wiki_jaylub1")
 	Wiki        = renderer.Page("wiki")
 	Jayware     = renderer.Page("jayware")
 )

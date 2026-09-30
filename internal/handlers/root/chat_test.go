@@ -41,6 +41,9 @@ func TestSelfChatIsIsolatedAndLeavesGlobalMessagesUntouched(t *testing.T) {
 			t.Fatalf("get user ID for %q: %v", username, err)
 		}
 		userIDs[username] = userID
+		if err := service.AcceptTerms(userID); err != nil {
+			t.Fatalf("accept terms for %q: %v", username, err)
+		}
 
 		tokenHash := sha256.Sum256([]byte(token))
 		if _, err := service.DB().Exec(

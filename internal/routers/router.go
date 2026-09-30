@@ -20,6 +20,7 @@ func Basic(authService *auth.Service) http.Handler {
 		{"/about", handlers.About},
 		{"/me", handlers.Me},
 		{"/settings", handlers.Settings(authService)},
+		{"/terms", handlers.Terms(authService)},
 		{"/contacts", handlers.Contacts},
 		{"/docs", handlers.Docs},
 		{"/documentation", handlers.Docs},
@@ -34,7 +35,8 @@ func Basic(authService *auth.Service) http.Handler {
 
 		{"/wiki", handlers.Wiki},
 		{"/wiki/C", handlers.Wiki_C},
-		{"/wiki/jaylub", handlers.Wiki_Jaylub},
+		{"/wiki/jaylub1", handlers.Wiki_Jaylub},
+		{"/wiki/jaylub", handlers.Wiki_Jaylub1},
 
 		{"/pages", handlers.Page},
 		{"/pages/jayware", handlers.Jayware},

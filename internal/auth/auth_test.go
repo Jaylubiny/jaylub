@@ -1,14 +1,19 @@
 package auth
 
 import (
+	"context"
 	"html/template"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestNewDoesNotCreateOrResetUsers(t *testing.T) {
@@ -54,6 +59,36 @@ func TestNewDoesNotCreateOrResetUsers(t *testing.T) {
 	}
 }
 
+func TestSQLiteConnectionsEnableForeignKeysAndWAL(t *testing.T) {
+	service, err := New(filepath.Join(t.TempDir(), "users.db"))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	defer service.Close()
+
+	conn, err := service.db.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	var foreignKeys int
+	if err := conn.QueryRowContext(context.Background(), `PRAGMA foreign_keys`).Scan(&foreignKeys); err != nil {
+		t.Fatal(err)
+	}
+	if foreignKeys != 1 {
+		t.Fatalf("foreign_keys = %d, want enabled", foreignKeys)
+	}
+
+	var journalMode string
+	if err := conn.QueryRowContext(context.Background(), `PRAGMA journal_mode`).Scan(&journalMode); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.EqualFold(journalMode, "wal") {
+		t.Fatalf("journal_mode = %q, want WAL", journalMode)
+	}
+}
+
 func TestMiddlewareAllowsPublicHomeButKeepsApplicationProtected(t *testing.T) {
 	service, err := New(filepath.Join(t.TempDir(), "users.db"))
 	if err != nil {
@@ -71,11 +106,23 @@ func TestMiddlewareAllowsPublicHomeButKeepsApplicationProtected(t *testing.T) {
 	if homeResponse.Code != http.StatusOK || homeResponse.Body.String() != "full landing page" {
 		t.Fatalf("home response = (%d, %q), want full unauthenticated response", homeResponse.Code, homeResponse.Body.String())
 	}
+	if got := homeResponse.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("home Cache-Control = %q, want no-store", got)
+	}
 
 	protectedResponse := httptest.NewRecorder()
 	handler.ServeHTTP(protectedResponse, httptest.NewRequest(http.MethodGet, "/chat", nil))
 	if protectedResponse.Code != http.StatusSeeOther || protectedResponse.Header().Get("Location") != "/login" {
 		t.Fatalf("protected route response = (%d, %q), want redirect to login", protectedResponse.Code, protectedResponse.Header().Get("Location"))
+	}
+	if got := protectedResponse.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("redirect Cache-Control = %q, want no-store", got)
+	}
+
+	staticResponse := httptest.NewRecorder()
+	handler.ServeHTTP(staticResponse, httptest.NewRequest(http.MethodGet, "/static/css/site.css", nil))
+	if got := staticResponse.Header().Get("Cache-Control"); got != "" {
+		t.Errorf("static asset Cache-Control = %q, want unchanged", got)
 	}
 }
 
@@ -150,6 +197,9 @@ func TestMiddlewareAddsUserContextOnPublicHomeWhenSessionIsValid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get user ID: %v", err)
 	}
+	if err := service.AcceptTerms(userID); err != nil {
+		t.Fatalf("accept terms for test user: %v", err)
+	}
 
 	const sessionToken = "valid-test-session"
 	if _, err := service.db.Exec(
@@ -208,5 +258,118 @@ func TestLoginTemplateRendersMetadataAndNoIndex(t *testing.T) {
 		if !strings.Contains(html, fragment) {
 			t.Errorf("rendered login page is missing %q", fragment)
 		}
+	}
+}
+
+func TestMiddlewareRequiresCurrentTermsBeforeProtectedPages(t *testing.T) {
+	service, err := New(filepath.Join(t.TempDir(), "users.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+
+	if _, err := service.db.Exec(
+		`INSERT INTO users (username, password_hash) VALUES (?, ?)`,
+		"terms-user",
+		"unused-hash",
+	); err != nil {
+		t.Fatal(err)
+	}
+	const token = "terms-test-session"
+	if _, err := service.db.Exec(
+		`INSERT INTO sessions (user_id, token_hash, expires_at) VALUES (
+			(SELECT id FROM users WHERE username = ?), ?, ?
+		)`,
+		"terms-user",
+		hashToken(token),
+		time.Now().Add(time.Hour),
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	handler := service.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := UserFromContext(r.Context()); !ok {
+			t.Error("authenticated user missing from request context")
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	protectedRequest := httptest.NewRequest(http.MethodGet, "https://jaylub.com/chat", nil)
+	protectedRequest.AddCookie(&http.Cookie{Name: cookieName, Value: token})
+	protectedResponse := httptest.NewRecorder()
+	handler.ServeHTTP(protectedResponse, protectedRequest)
+	if protectedResponse.Code != http.StatusSeeOther || protectedResponse.Header().Get("Location") != "/terms" {
+		t.Fatalf("unaccepted protected response = (%d, %q), want redirect to /terms",
+			protectedResponse.Code, protectedResponse.Header().Get("Location"))
+	}
+
+	termsRequest := httptest.NewRequest(http.MethodGet, "https://jaylub.com/terms", nil)
+	termsRequest.AddCookie(&http.Cookie{Name: cookieName, Value: token})
+	termsResponse := httptest.NewRecorder()
+	handler.ServeHTTP(termsResponse, termsRequest)
+	if termsResponse.Code != http.StatusOK {
+		t.Fatalf("terms page status = %d, want %d", termsResponse.Code, http.StatusOK)
+	}
+
+	if err := service.AcceptTerms(1); err != nil {
+		t.Fatal(err)
+	}
+	acceptedResponse := httptest.NewRecorder()
+	handler.ServeHTTP(acceptedResponse, protectedRequest)
+	if acceptedResponse.Code != http.StatusOK {
+		t.Fatalf("accepted protected status = %d, want %d", acceptedResponse.Code, http.StatusOK)
+	}
+}
+
+func TestLoginRedirectsToTermsUntilAccepted(t *testing.T) {
+	service, err := New(filepath.Join(t.TempDir(), "users.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	if _, err := service.db.Exec(
+		`INSERT INTO users (username, password_hash) VALUES (?, ?)`,
+		"terms-user",
+		"unused-hash",
+	); err != nil {
+		t.Fatal(err)
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte("correct-password"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.db.Exec(`UPDATE users SET password_hash = ? WHERE username = ?`, string(hash), "terms-user"); err != nil {
+		t.Fatal(err)
+	}
+
+	form := url.Values{"username": {"terms-user"}, "password": {"correct-password"}}
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"https://jaylub.com/login",
+		strings.NewReader(form.Encode()),
+	)
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response := httptest.NewRecorder()
+
+	_, sourceFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("could not locate test source")
+	}
+	projectRoot := filepath.Join(filepath.Dir(sourceFile), "..", "..")
+	workingDirectory, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(projectRoot); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(workingDirectory); err != nil {
+			t.Errorf("restore working directory: %v", err)
+		}
+	})
+	service.LoginPage().ServeHTTP(response, request)
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/terms" {
+		t.Fatalf("login response = (%d, %q), want redirect to /terms",
+			response.Code, response.Header().Get("Location"))
 	}
 }

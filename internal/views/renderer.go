@@ -25,6 +25,7 @@ type PageData struct {
 	Username        string
 	Initials        string
 	Query           string
+	TermsVersion    string
 	Stats           ProfileStats
 	ChatUnreadCount int
 	ChatSettings    auth.ChatSettings
@@ -107,7 +108,11 @@ func (r *Renderer) RenderWithSEO(w http.ResponseWriter, req *http.Request, name 
 		return
 	}
 
-	data := PageData{Title: name, Query: req.URL.Query().Get("saved")}
+	data := PageData{
+		Title:        name,
+		Query:        req.URL.Query().Get("saved"),
+		TermsVersion: auth.CurrentTermsVersion,
+	}
 	if err := populateSEO(&data, seo); err != nil {
 		http.Error(w, "Could not render page metadata.", http.StatusInternalServerError)
 		return

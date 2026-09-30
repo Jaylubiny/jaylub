@@ -11,6 +11,7 @@ import (
 	"html/template"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,8 +22,9 @@ import (
 )
 
 const (
-	cookieName      = "jaylub_session"
-	sessionDuration = 30 * 24 * time.Hour
+	cookieName          = "jaylub_session"
+	sessionDuration     = 30 * 24 * time.Hour
+	CurrentTermsVersion = "2026-09-30"
 )
 
 type contextKey string
@@ -62,7 +64,16 @@ func New(dbPath string) (*Service, error) {
 		return nil, err
 	}
 
-	db, err := sql.Open("sqlite3", dbPath)
+	dbURL := url.URL{
+		Scheme: "file",
+		Path:   dbPath,
+		RawQuery: url.Values{
+			"_foreign_keys": {"on"},
+			"_busy_timeout": {"5000"},
+			"_journal_mode": {"WAL"},
+		}.Encode(),
+	}
+	db, err := sql.Open("sqlite3", dbURL.String())
 	if err != nil {
 		return nil, err
 	}
@@ -146,6 +157,14 @@ func (s *Service) initSchema() error {
 			token_hash TEXT NOT NULL UNIQUE,
 			expires_at DATETIME NOT NULL,
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		);
+
+		CREATE TABLE IF NOT EXISTS terms_acceptances (
+			user_id INTEGER NOT NULL,
+			terms_version TEXT NOT NULL,
+			accepted_at DATETIME NOT NULL,
+			PRIMARY KEY (user_id, terms_version),
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		);
 
@@ -404,35 +423,68 @@ func (s *Service) Logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, expired)
 }
 
+func (s *Service) TermsAccepted(userID int64) (bool, error) {
+	var accepted bool
+	err := s.db.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1 FROM terms_acceptances
+			WHERE user_id = ? AND terms_version = ?
+		)
+	`, userID, CurrentTermsVersion).Scan(&accepted)
+	return accepted, err
+}
+
+func (s *Service) AcceptTerms(userID int64) error {
+	_, err := s.db.Exec(`
+		INSERT INTO terms_acceptances (user_id, terms_version, accepted_at)
+		VALUES (?, ?, ?)
+		ON CONFLICT(user_id, terms_version) DO NOTHING
+	`, userID, CurrentTermsVersion, time.Now().UTC())
+	return err
+}
+
 func (s *Service) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-
-		if r.URL.Path == "/" {
-			if user, ok := s.AuthenticatedUser(r); ok {
-				ctx := context.WithValue(r.Context(), userContextKey, user)
-				next.ServeHTTP(w, r.WithContext(ctx))
-				return
-			}
-			next.ServeHTTP(w, r)
-			return
+		if !strings.HasPrefix(r.URL.Path, "/web/static/") &&
+			!strings.HasPrefix(r.URL.Path, "/static/") {
+			w.Header().Set("Cache-Control", "no-store")
 		}
 
-		if s.isPublicPath(r.URL.Path) {
+		if r.URL.Path == "/login" ||
+			r.URL.Path == "/.well-known/discord" ||
+			strings.HasPrefix(r.URL.Path, "/web/static/") ||
+			strings.HasPrefix(r.URL.Path, "/static/") {
 			next.ServeHTTP(w, r)
 			return
 		}
 
 		user, ok := s.AuthenticatedUser(r)
 		if !ok {
+			if r.URL.Path == "/" {
+				next.ServeHTTP(w, r)
+				return
+			}
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
 
 		ctx := context.WithValue(r.Context(), userContextKey, user)
-		next.ServeHTTP(w, r.WithContext(ctx))
+		request := r.WithContext(ctx)
+		if r.URL.Path != "/terms" && r.URL.Path != "/logout" {
+			accepted, err := s.TermsAccepted(user.ID)
+			if err != nil {
+				http.Error(w, "Could not verify terms acceptance.", http.StatusInternalServerError)
+				return
+			}
+			if !accepted {
+				http.Redirect(w, r, "/terms", http.StatusSeeOther)
+				return
+			}
+		}
+		next.ServeHTTP(w, request)
 	})
 }
 
@@ -443,8 +495,17 @@ func (s *Service) LoginPage() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			if _, ok := s.AuthenticatedUser(r); ok {
-				http.Redirect(w, r, "/", http.StatusSeeOther)
+			if user, ok := s.AuthenticatedUser(r); ok {
+				accepted, err := s.TermsAccepted(user.ID)
+				if err != nil {
+					http.Error(w, "Could not verify terms acceptance.", http.StatusInternalServerError)
+					return
+				}
+				if accepted {
+					http.Redirect(w, r, "/", http.StatusSeeOther)
+				} else {
+					http.Redirect(w, r, "/terms", http.StatusSeeOther)
+				}
 				return
 			}
 			if err := tmpl.Execute(w, pageData); err != nil {
@@ -468,7 +529,21 @@ func (s *Service) LoginPage() http.HandlerFunc {
 				return
 			}
 
-			http.Redirect(w, r, "/", http.StatusSeeOther)
+			user, _, err := s.userWithPasswordHash(username)
+			if err != nil {
+				http.Error(w, "Could not verify the signed-in account.", http.StatusInternalServerError)
+				return
+			}
+			accepted, err := s.TermsAccepted(user.ID)
+			if err != nil {
+				http.Error(w, "Could not verify terms acceptance.", http.StatusInternalServerError)
+				return
+			}
+			if accepted {
+				http.Redirect(w, r, "/", http.StatusSeeOther)
+			} else {
+				http.Redirect(w, r, "/terms", http.StatusSeeOther)
+			}
 		default:
 			w.Header().Set("Allow", "GET, POST")
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
@@ -556,14 +631,6 @@ func (s *Service) sessionCookie(r *http.Request, value string, expires time.Time
 		Secure:   r.TLS != nil || cookieDomain(r.Host) != "",
 		SameSite: http.SameSiteLaxMode,
 	}
-}
-
-func (s *Service) isPublicPath(path string) bool {
-	return path == "/" ||
-		path == "/login" ||
-		path == "/.well-known/discord" ||
-		strings.HasPrefix(path, "/web/static/") ||
-		strings.HasPrefix(path, "/static/")
 }
 
 func randomToken() (string, error) {

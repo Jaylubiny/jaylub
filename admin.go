@@ -47,6 +47,8 @@ func main() {
 		giveJayliveGold(db, reader)
 	case "7":
 		removeUserFromLeaderboardSection(db, reader)
+	case "8":
+		resetUserPassword(db, reader)
 	default:
 		log.Fatal("unknown action")
 	}
@@ -62,7 +64,77 @@ func printMenu() {
 	fmt.Println("5. Reset Jaylive leaderboards")
 	fmt.Println("6. Give Jaylive gold")
 	fmt.Println("7. Remove user from one Jaylive leaderboard section")
+	fmt.Println("8. Reset a user's password")
 	fmt.Println()
+}
+
+func resetUserPassword(db *sql.DB, reader *bufio.Reader) {
+	username := prompt(reader, "Username to reset: ")
+	if username == "" {
+		log.Fatal("username is required")
+	}
+
+	password := prompt(reader, "New password: ")
+	if password == "" {
+		log.Fatal("password is required")
+	}
+	confirmation := prompt(reader, "Confirm new password: ")
+	if password != confirmation {
+		log.Fatal("passwords do not match")
+	}
+
+	if err := resetPassword(db, username, password); err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("Password reset for %q. All existing sessions were revoked.\n", username)
+}
+
+func resetPassword(db *sql.DB, username, password string) error {
+	if username == "" {
+		return fmt.Errorf("username is required")
+	}
+	if password == "" {
+		return fmt.Errorf("password is required")
+	}
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash new password: %w", err)
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin password reset: %w", err)
+	}
+	defer tx.Rollback()
+
+	result, err := tx.Exec(
+		`UPDATE users SET password_hash = ? WHERE username = ?`,
+		string(passwordHash),
+		username,
+	)
+	if err != nil {
+		return fmt.Errorf("update password: %w", err)
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("check password update: %w", err)
+	}
+	if updated == 0 {
+		return fmt.Errorf("user %q does not exist", username)
+	}
+
+	if _, err := tx.Exec(
+		`DELETE FROM sessions WHERE user_id = (SELECT id FROM users WHERE username = ?)`,
+		username,
+	); err != nil {
+		return fmt.Errorf("revoke user sessions: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("save password reset: %w", err)
+	}
+
+	return nil
 }
 
 func addUser(db *sql.DB, reader *bufio.Reader) {
