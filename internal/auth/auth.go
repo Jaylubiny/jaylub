@@ -469,10 +469,6 @@ func (s *Service) Middleware(next http.Handler) http.Handler {
 
 		user, ok := s.AuthenticatedUser(r)
 		if !ok {
-			if r.URL.Path == "/" {
-				next.ServeHTTP(w, r)
-				return
-			}
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}

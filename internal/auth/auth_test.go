@@ -119,7 +119,7 @@ func TestNewAcceptsRelativeDatabasePath(t *testing.T) {
 	}
 }
 
-func TestMiddlewareAllowsPublicHomeButKeepsApplicationProtected(t *testing.T) {
+func TestMiddlewareRedirectsUnauthenticatedHomeAndProtectedPagesToLogin(t *testing.T) {
 	service, err := New(filepath.Join(t.TempDir(), "users.db"))
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -131,22 +131,18 @@ func TestMiddlewareAllowsPublicHomeButKeepsApplicationProtected(t *testing.T) {
 		_, _ = w.Write([]byte("full landing page"))
 	}))
 
-	homeResponse := httptest.NewRecorder()
-	handler.ServeHTTP(homeResponse, httptest.NewRequest(http.MethodGet, "/", nil))
-	if homeResponse.Code != http.StatusOK || homeResponse.Body.String() != "full landing page" {
-		t.Fatalf("home response = (%d, %q), want full unauthenticated response", homeResponse.Code, homeResponse.Body.String())
-	}
-	if got := homeResponse.Header().Get("Cache-Control"); got != "no-store" {
-		t.Errorf("home Cache-Control = %q, want no-store", got)
-	}
-
-	protectedResponse := httptest.NewRecorder()
-	handler.ServeHTTP(protectedResponse, httptest.NewRequest(http.MethodGet, "/chat", nil))
-	if protectedResponse.Code != http.StatusSeeOther || protectedResponse.Header().Get("Location") != "/login" {
-		t.Fatalf("protected route response = (%d, %q), want redirect to login", protectedResponse.Code, protectedResponse.Header().Get("Location"))
-	}
-	if got := protectedResponse.Header().Get("Cache-Control"); got != "no-store" {
-		t.Errorf("redirect Cache-Control = %q, want no-store", got)
+	for _, path := range []string{"/", "/chat"} {
+		t.Run(path, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+			if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/login" {
+				t.Fatalf("response = (%d, %q), want redirect to login",
+					response.Code, response.Header().Get("Location"))
+			}
+			if got := response.Header().Get("Cache-Control"); got != "no-store" {
+				t.Errorf("redirect Cache-Control = %q, want no-store", got)
+			}
+		})
 	}
 
 	staticResponse := httptest.NewRecorder()
