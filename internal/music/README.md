@@ -75,12 +75,21 @@ schema. It stores song metadata and each user's favorites separately.
 - `GET /api/favorites` — current user's favorite playlist
 - `POST /api/favorites` — JSON body `{"song_id":"<uuid>"}`
 - `DELETE /api/favorites/{id}` — remove the current user's favorite
-- `POST /api/upload` — multipart field `file`, MP3 only, 50 MiB maximum
+- `POST /api/upload` — multipart field `file`, MP3 only, 100 MiB maximum
 - `GET /api/stream?id=<uuid>` — MP3 stream with HTTP range/seek support
 
 The browser app is embedded into the Go binary. Tab changes do not replace its
 audio element, so playback continues while switching between library,
 favorites, and upload views.
+
+## Install as a mobile app
+
+The music page includes a web app manifest, home-screen icons, and a service
+worker. Serve it over HTTPS (the Cloudflare Tunnel should terminate TLS) and
+open `music.jaylub.com` in the device browser. Android browsers that support
+the install prompt show an **Install app** button. On iPhone/iPad, use Safari's
+Share menu and choose **Add to Home Screen**. Offline mode provides an offline
+message page; it deliberately does not cache account pages, APIs, or audio.
 
 `MockAuthMiddleware` supplies a fixed development user and can be used in
 local-only handlers/tests. It is intentionally insecure and is never mounted

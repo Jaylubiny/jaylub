@@ -24,12 +24,12 @@ import (
 )
 
 const (
-	maxUploadBytes       = 50 << 20
+	maxUploadBytes       = 100 << 20
 	multipartOverheadMax = 64 << 10
 	multipartMemoryLimit = 2 << 20
 )
 
-//go:embed web/index.html web/app.js web/styles.css web/icon.png
+//go:embed web/index.html web/app.js web/styles.css web/icon.png web/icon-192.png web/icon-512.png web/manifest.webmanifest web/sw.js web/offline.html
 var webFiles embed.FS
 
 type Handler struct {
@@ -69,6 +69,11 @@ func NewHandler(store *Store, uploadDir string, profileData func(User) views.Pag
 	h.mux.HandleFunc("GET /assets/app.js", h.asset("web/app.js", "text/javascript; charset=utf-8"))
 	h.mux.HandleFunc("GET /assets/styles.css", h.asset("web/styles.css", "text/css; charset=utf-8"))
 	h.mux.HandleFunc("GET /favicon.ico", h.asset("web/icon.png", "image/png"))
+	h.mux.HandleFunc("GET /icons/icon-192.png", h.asset("web/icon-192.png", "image/png"))
+	h.mux.HandleFunc("GET /icons/icon-512.png", h.asset("web/icon-512.png", "image/png"))
+	h.mux.HandleFunc("GET /manifest.webmanifest", h.asset("web/manifest.webmanifest", "application/manifest+json; charset=utf-8"))
+	h.mux.HandleFunc("GET /sw.js", h.serviceWorker)
+	h.mux.HandleFunc("GET /offline.html", h.asset("web/offline.html", "text/html; charset=utf-8"))
 	h.mux.HandleFunc("GET /api/songs", h.listSongs)
 	h.mux.HandleFunc("GET /api/favorites", h.listFavorites)
 	h.mux.HandleFunc("POST /api/favorites", h.addFavorite)
@@ -83,6 +88,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Referrer-Policy", "same-origin")
 	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self'; connect-src 'self'; form-action 'self' https://jaylub.com; base-uri 'none'; frame-ancestors 'none'; object-src 'none'")
 	h.mux.ServeHTTP(w, r)
+}
+
+func (h *Handler) serviceWorker(w http.ResponseWriter, r *http.Request) {
+	file, err := webFiles.ReadFile("web/sw.js")
+	if err != nil {
+		http.Error(w, "Service worker not found.", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Service-Worker-Allowed", "/")
+	_, _ = w.Write(file)
 }
 
 func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
@@ -280,7 +297,7 @@ func (h *Handler) uploadSong(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 	if header.Size > maxUploadBytes {
-		writeError(w, http.StatusRequestEntityTooLarge, "MP3 files must be 50 MB or smaller.")
+		writeError(w, http.StatusRequestEntityTooLarge, "MP3 files must be 100 MB or smaller.")
 		return
 	}
 	if strings.ToLower(filepath.Ext(header.Filename)) != ".mp3" {
@@ -303,7 +320,7 @@ func (h *Handler) uploadSong(w http.ResponseWriter, r *http.Request) {
 	}
 	if written > maxUploadBytes {
 		tempFile.Close()
-		writeError(w, http.StatusRequestEntityTooLarge, "MP3 files must be 50 MB or smaller.")
+		writeError(w, http.StatusRequestEntityTooLarge, "MP3 files must be 100 MB or smaller.")
 		return
 	}
 	if err := tempFile.Sync(); err != nil {
@@ -404,7 +421,7 @@ func mp3Duration(file io.ReadSeeker) (time.Duration, error) {
 func uploadError(err error) string {
 	var maxBytesError *http.MaxBytesError
 	if errors.As(err, &maxBytesError) {
-		return "MP3 files must be 50 MB or smaller."
+		return "MP3 files must be 100 MB or smaller."
 	}
 	return "Could not read the MP3 upload."
 }

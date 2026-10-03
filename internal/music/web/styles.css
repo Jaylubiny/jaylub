@@ -254,6 +254,17 @@ button { color: inherit; }
 .volume-control { display: flex; justify-self: end; align-items: center; gap: .65rem; width: min(100%, 130px); color: var(--muted); }
 .toast { position: fixed; z-index: 20; right: 1rem; bottom: 112px; max-width: min(90vw, 420px); padding: .85rem 1rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-raised); opacity: 0; pointer-events: none; transform: translateY(8px); transition: .2s; }
 .toast.show { opacity: 1; transform: translateY(0); }
+.offline-page {
+  width: min(100% - 2rem, 620px);
+  margin: 15vh auto 0;
+  padding: clamp(1.5rem, 5vw, 3rem);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 18px 55px rgba(0, 0, 0, .45);
+}
+.offline-page h1 { margin: 0 0 .8rem; font-size: clamp(1.8rem, 5vw, 2.6rem); }
+.offline-page p { margin: 0 0 1.4rem; color: var(--muted); line-height: 1.6; }
 
 @media (max-width: 800px) {
   .sidebar, .sidebar.collapsed {

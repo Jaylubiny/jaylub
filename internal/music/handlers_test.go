@@ -166,6 +166,8 @@ func TestIndexRendersAuthenticatedAccountActions(t *testing.T) {
 		`<strong>123</strong>`,
 		`<strong>1:30</strong>`,
 		`id="menu-toggle"`,
+		`rel="manifest" href="/manifest.webmanifest"`,
+		`id="install-app"`,
 	} {
 		if !strings.Contains(page, expected) {
 			t.Errorf("rendered page does not contain %q", expected)
@@ -194,7 +196,15 @@ func TestPageTemplateRendersLoginForUnauthenticatedContext(t *testing.T) {
 
 func TestFrontendAssetsServeIconAndDoNotCacheOldTrackDetails(t *testing.T) {
 	_, handler, _ := newTestMusicHandler(t)
-	for _, assetPath := range []string{"/assets/app.js", "/assets/styles.css", "/favicon.ico"} {
+	for _, assetPath := range []string{
+		"/assets/app.js",
+		"/assets/styles.css",
+		"/favicon.ico",
+		"/icons/icon-192.png",
+		"/icons/icon-512.png",
+		"/manifest.webmanifest",
+		"/offline.html",
+	} {
 		request := httptest.NewRequest(http.MethodGet, assetPath, nil)
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
@@ -212,6 +222,42 @@ func TestFrontendAssetsServeIconAndDoNotCacheOldTrackDetails(t *testing.T) {
 				t.Error("favicon response is not a PNG")
 			}
 		}
+		if strings.HasPrefix(assetPath, "/icons/") {
+			size := 192
+			if strings.Contains(assetPath, "512") {
+				size = 512
+			}
+			if width, height := pngDimensions(t, response.Body.Bytes()); width != size || height != size {
+				t.Errorf("%s dimensions = %dx%d, want %dx%d", assetPath, width, height, size, size)
+			}
+		}
+		if assetPath == "/manifest.webmanifest" {
+			if got := response.Header().Get("Content-Type"); !strings.HasPrefix(got, "application/manifest+json") {
+				t.Errorf("manifest Content-Type = %q", got)
+			}
+			var manifest struct {
+				Name     string `json:"name"`
+				Display  string `json:"display"`
+				StartURL string `json:"start_url"`
+				Scope    string `json:"scope"`
+				Icons    []struct {
+					Src   string `json:"src"`
+					Sizes string `json:"sizes"`
+					Type  string `json:"type"`
+				} `json:"icons"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &manifest); err != nil {
+				t.Fatalf("decode manifest: %v", err)
+			}
+			if manifest.Name != "Jaylub Music" || manifest.Display != "standalone" ||
+				manifest.StartURL != "/" || manifest.Scope != "/" || len(manifest.Icons) != 2 {
+				t.Errorf("manifest configuration = %+v", manifest)
+			}
+			if len(manifest.Icons) == 2 &&
+				(manifest.Icons[0].Sizes != "192x192" || manifest.Icons[1].Sizes != "512x512") {
+				t.Errorf("manifest icon sizes = %q and %q", manifest.Icons[0].Sizes, manifest.Icons[1].Sizes)
+			}
+		}
 		if assetPath == "/assets/app.js" {
 			body := response.Body.String()
 			if strings.Contains(body, "song.artist") || strings.Contains(body, "song.album") {
@@ -221,6 +267,41 @@ func TestFrontendAssetsServeIconAndDoNotCacheOldTrackDetails(t *testing.T) {
 				t.Error("track UI does not render each song ID")
 			}
 		}
+	}
+}
+
+func pngDimensions(t *testing.T, data []byte) (int, int) {
+	t.Helper()
+	if len(data) < 24 || !bytes.HasPrefix(data, []byte("\x89PNG\r\n\x1a\n")) {
+		t.Fatal("icon response is not a valid PNG")
+	}
+	return int(data[16])<<24 | int(data[17])<<16 | int(data[18])<<8 | int(data[19]),
+		int(data[20])<<24 | int(data[21])<<16 | int(data[22])<<8 | int(data[23])
+}
+
+func TestServiceWorkerOnlyCachesPublicShellAndUsesRootScope(t *testing.T) {
+	_, handler, _ := newTestMusicHandler(t)
+	request := httptest.NewRequest(http.MethodGet, "/sw.js", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("service worker status = %d, want 200", response.Code)
+	}
+	if got := response.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/javascript") {
+		t.Errorf("service worker Content-Type = %q", got)
+	}
+	if got := response.Header().Get("Service-Worker-Allowed"); got != "/" {
+		t.Errorf("Service-Worker-Allowed = %q, want /", got)
+	}
+	if got := response.Header().Get("Cache-Control"); got != "no-cache" {
+		t.Errorf("service worker Cache-Control = %q, want no-cache", got)
+	}
+	script := response.Body.String()
+	if strings.Contains(script, `"/api/`) || strings.Contains(script, `"/api/stream`) {
+		t.Error("service worker must not cache authenticated APIs or streams")
+	}
+	if !strings.Contains(script, `fetch(request).catch`) || !strings.Contains(script, `"/offline.html"`) {
+		t.Error("service worker does not use the offline page as navigation fallback")
 	}
 }
 

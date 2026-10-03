@@ -40,6 +40,52 @@ func TestPrintMenuIncludesPasswordResetOption(t *testing.T) {
 	if !strings.Contains(string(output), "10. Remove Jaylive gold") {
 		t.Fatalf("admin menu does not show Jaylive gold removal option:\n%s", output)
 	}
+	if !strings.Contains(string(output), "11. Rename a music track by ID") {
+		t.Fatalf("admin menu does not show music track rename option:\n%s", output)
+	}
+}
+
+func TestRenameMusicTrackByIDUpdatesTitle(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "music.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`
+		CREATE TABLE songs (id TEXT PRIMARY KEY, title TEXT NOT NULL);
+		INSERT INTO songs (id, title) VALUES ('track-1', 'Old title');
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := renameMusicTrackByID(db, "track-1", "  New title  "); err != nil {
+		t.Fatalf("rename track: %v", err)
+	}
+	var title string
+	if err := db.QueryRow(`SELECT title FROM songs WHERE id = 'track-1'`).Scan(&title); err != nil {
+		t.Fatal(err)
+	}
+	if title != "New title" {
+		t.Errorf("track title = %q, want New title", title)
+	}
+}
+
+func TestRenameMusicTrackByIDRejectsMissingTrackAndBlankTitle(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "music.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE songs (id TEXT PRIMARY KEY, title TEXT NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := renameMusicTrackByID(db, "missing", "Title"); err == nil {
+		t.Fatal("renaming missing track succeeded")
+	}
+	if err := renameMusicTrackByID(db, "track-1", "  "); err == nil {
+		t.Fatal("renaming to blank title succeeded")
+	}
 }
 
 func TestDeductJayliveGoldRemovesRequestedAmount(t *testing.T) {

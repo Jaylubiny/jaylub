@@ -4,8 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#111318">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Jaylub Music">
   <title>Jaylub Music</title>
+  <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/favicon.ico" type="image/png">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
   <link rel="stylesheet" href="/assets/styles.css">
   <script src="/assets/app.js" defer></script>
 </head>
@@ -15,6 +20,7 @@
     <button id="menu-toggle" class="icon-button" type="button" aria-label="Open navigation" aria-expanded="true" aria-controls="sidebar">☰</button>
     <p class="header-caption">Music library</p>
     <div class="header-actions">
+      <button id="install-app" class="account-button install-button" type="button" hidden>Install app</button>
       {{if .Username}}
       <div class="user-menu" data-user-menu>
         <button class="profile-button" type="button" data-user-menu-button aria-haspopup="true" aria-expanded="false">
@@ -67,7 +73,7 @@
         <button class="tab-button" type="button" data-tab="favorites">Favorites</button>
         <button class="tab-button" type="button" data-tab="upload">Upload music</button>
       </nav>
-      <p class="sidebar-note">MP3 audio only · 50 MB maximum per track</p>
+      <p class="sidebar-note">MP3 audio only · 100 MB maximum per track</p>
     </aside>
 
     <button id="menu-backdrop" class="menu-backdrop" type="button" aria-label="Close navigation" hidden></button>
@@ -97,7 +103,7 @@
           <label class="file-drop">
             <span class="file-icon" aria-hidden="true">♫</span>
             <span class="file-title">Choose an MP3 file</span>
-            <span class="file-help">MP3 only · Maximum size 50 MB</span>
+            <span class="file-help">MP3 only · Maximum size 100 MB</span>
             <input id="audio-file" name="file" type="file" accept=".mp3,audio/mpeg" required>
           </label>
           <div class="upload-progress" aria-live="polite">

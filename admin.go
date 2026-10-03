@@ -57,6 +57,8 @@ func main() {
 		removeMusicTrack(reader)
 	case "10":
 		removeJayliveGold(db, reader)
+	case "11":
+		renameMusicTrack(reader)
 	default:
 		log.Fatal("unknown action")
 	}
@@ -75,7 +77,56 @@ func printMenu() {
 	fmt.Println("8. Reset a user's password")
 	fmt.Println("9. Remove a music track by ID")
 	fmt.Println("10. Remove Jaylive gold")
+	fmt.Println("11. Rename a music track by ID")
 	fmt.Println()
+}
+
+func renameMusicTrack(reader *bufio.Reader) {
+	songID := prompt(reader, "Track ID to rename: ")
+	if songID == "" {
+		log.Fatal("track ID is required")
+	}
+	title := prompt(reader, "New track title: ")
+	if strings.TrimSpace(title) == "" {
+		log.Fatal("track title is required")
+	}
+
+	musicDB, err := sql.Open("sqlite3", "file:"+musicDBPath+"?_foreign_keys=on&_busy_timeout=5000")
+	if err != nil {
+		log.Fatalf("open music database: %v", err)
+	}
+	defer musicDB.Close()
+	if err := musicDB.Ping(); err != nil {
+		log.Fatalf("connect to music database: %v", err)
+	}
+	if err := renameMusicTrackByID(musicDB, songID, title); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Renamed music track %s to %q.\n", songID, strings.TrimSpace(title))
+}
+
+func renameMusicTrackByID(db *sql.DB, songID, title string) error {
+	songID = strings.TrimSpace(songID)
+	title = strings.TrimSpace(title)
+	if songID == "" {
+		return fmt.Errorf("track ID is required")
+	}
+	if title == "" {
+		return fmt.Errorf("track title is required")
+	}
+
+	result, err := db.Exec(`UPDATE songs SET title = ? WHERE id = ?`, title, songID)
+	if err != nil {
+		return fmt.Errorf("rename music track: %w", err)
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("verify music track rename: %w", err)
+	}
+	if updated == 0 {
+		return fmt.Errorf("track %q does not exist", songID)
+	}
+	return nil
 }
 
 func removeJayliveGold(db *sql.DB, reader *bufio.Reader) {
