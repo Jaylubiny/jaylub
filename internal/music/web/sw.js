@@ -1,9 +1,9 @@
 "use strict";
 
-const CACHE_NAME = "jaylub-music-shell-v1";
+const CACHE_NAME = "jaylub-music-shell-v2";
 const SHELL_ASSETS = [
-  "/assets/app.js",
-  "/assets/styles.css",
+  "/assets/app.js?v=pwa-2",
+  "/assets/styles.css?v=pwa-2",
   "/favicon.ico",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
@@ -45,7 +45,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (SHELL_ASSETS.includes(url.pathname)) {
+  if (SHELL_ASSETS.some((asset) => new URL(asset, self.location.origin).pathname === url.pathname)) {
     event.respondWith(
       caches.match(request).then((cached) => cached || fetch(request))
     );

@@ -296,6 +296,10 @@ func TestServiceWorkerOnlyCachesPublicShellAndUsesRootScope(t *testing.T) {
 		t.Errorf("service worker Cache-Control = %q, want no-cache", got)
 	}
 	script := response.Body.String()
+	if !strings.Contains(script, "jaylub-music-shell-v2") ||
+		!strings.Contains(script, "/assets/app.js?v=pwa-2") {
+		t.Error("service worker shell cache is not versioned to refresh stale app assets")
+	}
 	if strings.Contains(script, `"/api/`) || strings.Contains(script, `"/api/stream`) {
 		t.Error("service worker must not cache authenticated APIs or streams")
 	}

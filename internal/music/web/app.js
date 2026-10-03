@@ -244,7 +244,8 @@
 
   function bindEvents() {
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js", { scope: "/" })
+      navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" })
+        .then((registration) => registration.update())
         .catch((error) => console.error("Could not register music offline app:", error));
     }
     const userMenu = document.querySelector("[data-user-menu]");
