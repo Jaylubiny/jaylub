@@ -167,6 +167,13 @@ func TestIndexRendersAuthenticatedAccountActions(t *testing.T) {
 		`<strong>1:30</strong>`,
 		`id="menu-toggle"`,
 		`rel="manifest" href="/manifest.webmanifest"`,
+		`name="description" content="Jaylub Music is a self-hosted MP3 library`,
+		`property="og:title" content="Jaylub Music"`,
+		`property="og:description" content="Browse, upload, and listen to MP3 music in your Jaylub library."`,
+		`property="og:url" content="https://music.jaylub.com/"`,
+		`property="og:image" content="https://music.jaylub.com/icons/icon-512.png"`,
+		`name="twitter:card" content="summary"`,
+		`rel="canonical" href="https://music.jaylub.com/"`,
 	} {
 		if !strings.Contains(page, expected) {
 			t.Errorf("rendered page does not contain %q", expected)

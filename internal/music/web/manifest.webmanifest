@@ -2,7 +2,7 @@
   "id": "/",
   "name": "Jaylub Music",
   "short_name": "Music",
-  "description": "Your self-hosted music library.",
+  "description": "Browse, upload, and listen to MP3 music in your Jaylub library.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
