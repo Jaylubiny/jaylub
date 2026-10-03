@@ -29,7 +29,7 @@ const (
 	multipartMemoryLimit = 2 << 20
 )
 
-//go:embed web/index.html web/app.js web/styles.css
+//go:embed web/index.html web/app.js web/styles.css web/icon.png
 var webFiles embed.FS
 
 type Handler struct {
@@ -68,6 +68,7 @@ func NewHandler(store *Store, uploadDir string, profileData func(User) views.Pag
 	})
 	h.mux.HandleFunc("GET /assets/app.js", h.asset("web/app.js", "text/javascript; charset=utf-8"))
 	h.mux.HandleFunc("GET /assets/styles.css", h.asset("web/styles.css", "text/css; charset=utf-8"))
+	h.mux.HandleFunc("GET /favicon.ico", h.asset("web/icon.png", "image/png"))
 	h.mux.HandleFunc("GET /api/songs", h.listSongs)
 	h.mux.HandleFunc("GET /api/favorites", h.listFavorites)
 	h.mux.HandleFunc("POST /api/favorites", h.addFavorite)

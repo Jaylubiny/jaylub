@@ -1,16 +1,16 @@
 # Self-hosted music subsystem
 
-The main Jaylub server listens for the music app on `127.0.0.1:9000` and uses
-the existing site session and terms middleware. Keep it behind a Cloudflare
-Tunnel; do not expose port 9000 directly to the public internet. Unauthenticated
-users are sent to the main site's login page.
+The main Jaylub server listens for the music app on port `9000` on all network
+interfaces and uses the existing site session and terms middleware. Keep it
+behind a Cloudflare Tunnel; use a host firewall to block direct public access
+to port 9000. Unauthenticated users are sent to the main site's login page.
 
 ## Production deployment
 
 1. Build and run from the repository root using `./run.sh`. It loads
    `internal/database/.env`, builds the server (including the embedded UI),
    and starts listeners on ports 8080, 8090, and 9000. The music listener is
-   loopback-only; the primary website listeners retain their existing binding.
+   reachable on all interfaces; firewall it from direct public access.
 2. Add this ingress rule to the existing Cloudflare Tunnel configuration
    before its final catch-all rule; preserve all the other site's ingress
    rules:

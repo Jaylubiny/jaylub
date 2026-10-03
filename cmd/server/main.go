@@ -118,7 +118,7 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 
 func newMusicHTTPServer(handler http.Handler) *http.Server {
 	return &http.Server{
-		Addr:              "127.0.0.1:9000",
+		Addr:              ":9000",
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       5 * time.Minute,

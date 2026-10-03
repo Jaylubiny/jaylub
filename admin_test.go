@@ -37,6 +37,68 @@ func TestPrintMenuIncludesPasswordResetOption(t *testing.T) {
 	if !strings.Contains(string(output), "9. Remove a music track by ID") {
 		t.Fatalf("admin menu does not show music track removal option:\n%s", output)
 	}
+	if !strings.Contains(string(output), "10. Remove Jaylive gold") {
+		t.Fatalf("admin menu does not show Jaylive gold removal option:\n%s", output)
+	}
+}
+
+func TestDeductJayliveGoldRemovesRequestedAmount(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "users.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT UNIQUE);
+		CREATE TABLE game_profiles (
+			user_id INTEGER PRIMARY KEY,
+			gold INTEGER NOT NULL,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+		INSERT INTO users (id, username) VALUES (1, 'alice');
+		INSERT INTO game_profiles (user_id, gold) VALUES (1, 100);
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	balance, err := deductJayliveGold(db, "alice", 35)
+	if err != nil {
+		t.Fatalf("deduct gold: %v", err)
+	}
+	if balance != 65 {
+		t.Errorf("remaining balance = %d, want 65", balance)
+	}
+}
+
+func TestDeductJayliveGoldRejectsInsufficientBalance(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "users.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT UNIQUE);
+		CREATE TABLE game_profiles (
+			user_id INTEGER PRIMARY KEY,
+			gold INTEGER NOT NULL,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+		INSERT INTO users (id, username) VALUES (1, 'alice');
+		INSERT INTO game_profiles (user_id, gold) VALUES (1, 10);
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := deductJayliveGold(db, "alice", 11); err == nil {
+		t.Fatal("deduction beyond available gold succeeded")
+	}
+	var balance int
+	if err := db.QueryRow(`SELECT gold FROM game_profiles WHERE user_id = 1`).Scan(&balance); err != nil {
+		t.Fatal(err)
+	}
+	if balance != 10 {
+		t.Errorf("balance after rejected deduction = %d, want 10", balance)
+	}
 }
 
 func TestRemoveMusicTrackByIDRemovesTrackFileAndFavorites(t *testing.T) {

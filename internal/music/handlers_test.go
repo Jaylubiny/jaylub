@@ -192,9 +192,9 @@ func TestPageTemplateRendersLoginForUnauthenticatedContext(t *testing.T) {
 	}
 }
 
-func TestFrontendAssetsDoNotCacheOldTrackDetails(t *testing.T) {
+func TestFrontendAssetsServeIconAndDoNotCacheOldTrackDetails(t *testing.T) {
 	_, handler, _ := newTestMusicHandler(t)
-	for _, assetPath := range []string{"/assets/app.js", "/assets/styles.css"} {
+	for _, assetPath := range []string{"/assets/app.js", "/assets/styles.css", "/favicon.ico"} {
 		request := httptest.NewRequest(http.MethodGet, assetPath, nil)
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
@@ -203,6 +203,14 @@ func TestFrontendAssetsDoNotCacheOldTrackDetails(t *testing.T) {
 		}
 		if got := response.Header().Get("Cache-Control"); got != "no-store" {
 			t.Errorf("GET %s Cache-Control = %q, want no-store", assetPath, got)
+		}
+		if assetPath == "/favicon.ico" {
+			if got := response.Header().Get("Content-Type"); got != "image/png" {
+				t.Errorf("favicon Content-Type = %q, want image/png", got)
+			}
+			if !bytes.HasPrefix(response.Body.Bytes(), []byte("\x89PNG\r\n\x1a\n")) {
+				t.Error("favicon response is not a PNG")
+			}
 		}
 		if assetPath == "/assets/app.js" {
 			body := response.Body.String()

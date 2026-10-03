@@ -55,6 +55,8 @@ func main() {
 		resetUserPassword(db, reader)
 	case "9":
 		removeMusicTrack(reader)
+	case "10":
+		removeJayliveGold(db, reader)
 	default:
 		log.Fatal("unknown action")
 	}
@@ -72,7 +74,82 @@ func printMenu() {
 	fmt.Println("7. Remove user from one Jaylive leaderboard section")
 	fmt.Println("8. Reset a user's password")
 	fmt.Println("9. Remove a music track by ID")
+	fmt.Println("10. Remove Jaylive gold")
 	fmt.Println()
+}
+
+func removeJayliveGold(db *sql.DB, reader *bufio.Reader) {
+	username := prompt(reader, "Username: ")
+	if username == "" {
+		log.Fatal("username is required")
+	}
+
+	amountText := prompt(reader, "Gold amount to remove: ")
+	amount, err := strconv.Atoi(amountText)
+	if err != nil || amount <= 0 {
+		log.Fatal("gold amount must be a positive whole number")
+	}
+
+	balance, err := deductJayliveGold(db, username, amount)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Removed %d gold from %q. New balance: %d\n", amount, username, balance)
+}
+
+func deductJayliveGold(db *sql.DB, username string, amount int) (int, error) {
+	if strings.TrimSpace(username) == "" {
+		return 0, fmt.Errorf("username is required")
+	}
+	if amount <= 0 {
+		return 0, fmt.Errorf("gold amount must be a positive whole number")
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("begin gold removal: %w", err)
+	}
+	defer tx.Rollback()
+
+	var userID int64
+	if err := tx.QueryRow(`SELECT id FROM users WHERE username = ?`, username).Scan(&userID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, fmt.Errorf("user %q does not exist", username)
+		}
+		return 0, fmt.Errorf("look up user: %w", err)
+	}
+
+	result, err := tx.Exec(`
+		UPDATE game_profiles
+		SET gold = gold - ?, updated_at = CURRENT_TIMESTAMP
+		WHERE user_id = ? AND gold >= ?
+	`, amount, userID, amount)
+	if err != nil {
+		return 0, fmt.Errorf("remove Jaylive gold: %w", err)
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("verify Jaylive gold removal: %w", err)
+	}
+	if updated == 0 {
+		var exists int
+		if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM game_profiles WHERE user_id = ?)`, userID).Scan(&exists); err != nil {
+			return 0, fmt.Errorf("check Jaylive profile: %w", err)
+		}
+		if exists == 0 {
+			return 0, fmt.Errorf("user %q does not have a Jaylive profile", username)
+		}
+		return 0, fmt.Errorf("user %q does not have enough gold", username)
+	}
+
+	var balance int
+	if err := tx.QueryRow(`SELECT gold FROM game_profiles WHERE user_id = ?`, userID).Scan(&balance); err != nil {
+		return 0, fmt.Errorf("read remaining Jaylive gold: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("save Jaylive gold removal: %w", err)
+	}
+	return balance, nil
 }
 
 func removeMusicTrack(reader *bufio.Reader) {

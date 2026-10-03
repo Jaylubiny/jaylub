@@ -73,5 +73,5 @@ func SiteAuthMiddleware(siteMiddleware func(http.Handler) http.Handler, next htt
 }
 
 func isAssetPath(path string) bool {
-	return path == "/assets/app.js" || path == "/assets/styles.css"
+	return path == "/assets/app.js" || path == "/assets/styles.css" || path == "/favicon.ico"
 }
