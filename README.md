@@ -67,8 +67,7 @@ DONE ^
 
 `./run.sh` builds the server and runs it in the foreground so systemd can track
 the process, collect its output, and stop it with SIGTERM. It does not create
-`server.pid` or `server.log` files. Stop the configured unit with
-`systemctl stop <unit>` or `./stop.sh <unit>`.
+`./stop.sh jaylub` stops the service
 
 ## UPDATES
 

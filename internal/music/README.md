@@ -87,8 +87,8 @@ favorites, and upload views.
 The music page includes a web app manifest, home-screen icons, and a service
 worker. Serve it over HTTPS (the Cloudflare Tunnel should terminate TLS) and
 open `music.jaylub.com` in the device browser. Android browsers that support
-the install prompt show an **Install app** button. On iPhone/iPad, use Safari's
-Share menu and choose **Add to Home Screen**. Offline mode provides an offline
+installation offer it from their browser UI. On iPhone/iPad, use Safari's Share
+menu and choose **Add to Home Screen**. Offline mode provides an offline
 message page; it deliberately does not cache account pages, APIs, or audio.
 
 `MockAuthMiddleware` supplies a fixed development user and can be used in

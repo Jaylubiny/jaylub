@@ -6,4 +6,8 @@ if [ "$#" -ne 1 ]; then
     exit 2
 fi
 
-exec systemctl stop "$1"
+UNIT="$1"
+
+echo "Stopping service: $UNIT..."
+# Dropping 'exec' allows the script to continue after stopping the service
+sudo systemctl stop "$UNIT"

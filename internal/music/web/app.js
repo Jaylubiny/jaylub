@@ -13,8 +13,7 @@
     queueIndex: -1,
     activeTab: "global",
     toastTimer: null,
-    menuOpen: !mobileNavigation.matches,
-    installPrompt: null
+    menuOpen: !mobileNavigation.matches
   };
 
   const byId = (id) => document.getElementById(id);
@@ -244,24 +243,6 @@
   }
 
   function bindEvents() {
-    const installButton = byId("install-app");
-    window.addEventListener("beforeinstallprompt", (event) => {
-      event.preventDefault();
-      state.installPrompt = event;
-      installButton.hidden = false;
-    });
-    window.addEventListener("appinstalled", () => {
-      state.installPrompt = null;
-      installButton.hidden = true;
-    });
-    installButton.addEventListener("click", async () => {
-      if (!state.installPrompt) return;
-      state.installPrompt.prompt();
-      const choice = await state.installPrompt.userChoice;
-      state.installPrompt = null;
-      installButton.hidden = true;
-      if (choice.outcome === "accepted") showToast("Jaylub Music installed.");
-    });
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js", { scope: "/" })
         .catch((error) => console.error("Could not register music offline app:", error));

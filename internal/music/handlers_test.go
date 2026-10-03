@@ -167,7 +167,6 @@ func TestIndexRendersAuthenticatedAccountActions(t *testing.T) {
 		`<strong>1:30</strong>`,
 		`id="menu-toggle"`,
 		`rel="manifest" href="/manifest.webmanifest"`,
-		`id="install-app"`,
 	} {
 		if !strings.Contains(page, expected) {
 			t.Errorf("rendered page does not contain %q", expected)
