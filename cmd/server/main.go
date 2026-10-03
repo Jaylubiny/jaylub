@@ -13,7 +13,9 @@ import (
 
 	"jaylub/internal/auth"
 	"jaylub/internal/bot"
+	"jaylub/internal/music"
 	router "jaylub/internal/routers"
+	"jaylub/internal/views"
 )
 
 func main() {
@@ -31,6 +33,13 @@ func run() error {
 		return err
 	}
 	defer authService.Close()
+	musicStore, err := music.OpenStore("internal/database/music.db")
+	if err != nil {
+		return err
+	}
+	defer musicStore.Close()
+	profileRenderer := views.NewRenderer("web/templates")
+	profileRenderer.SetDB(authService.DB())
 
 	token := os.Getenv("DISCORD_BOT_TOKEN")
 	if token == "" {
@@ -47,6 +56,19 @@ func run() error {
 	servers := []*http.Server{
 		newHTTPServer(":8080", router.Basic(authService)),
 		newHTTPServer(":8090", router.Company(authService)),
+		newMusicHTTPServer(music.SiteAuthMiddleware(
+			authService.Middleware,
+			music.NewHandler(musicStore, "./data/mp3s", func(user music.User) views.PageData {
+				return profileRenderer.ProfileMenuData(auth.User{
+					ID:       user.ID,
+					Username: user.Username,
+				})
+			}),
+			func(r *http.Request) (int64, string, bool) {
+				user, ok := auth.UserFromContext(r.Context())
+				return user.ID, user.Username, ok
+			},
+		)),
 	}
 	errCh := make(chan error, len(servers)+1)
 
@@ -91,6 +113,17 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 		ReadTimeout:       60 * time.Second,
 		WriteTimeout:      60 * time.Second,
 		IdleTimeout:       120 * time.Second,
+	}
+}
+
+func newMusicHTTPServer(handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              "127.0.0.1:9000",
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       5 * time.Minute,
+		WriteTimeout:      0,
+		IdleTimeout:       2 * time.Minute,
 	}
 }
 

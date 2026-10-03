@@ -59,6 +59,27 @@ func TestNewDoesNotCreateOrResetUsers(t *testing.T) {
 	}
 }
 
+func TestNewRestrictsDatabaseFilePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix file permission bits are not supported on Windows")
+	}
+
+	dbPath := filepath.Join(t.TempDir(), "users.db")
+	service, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	defer service.Close()
+
+	info, err := os.Stat(dbPath)
+	if err != nil {
+		t.Fatalf("stat database: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0600 {
+		t.Errorf("database permissions = %04o, want 0600", got)
+	}
+}
+
 func TestSQLiteConnectionsEnableForeignKeysAndWAL(t *testing.T) {
 	service, err := New(filepath.Join(t.TempDir(), "users.db"))
 	if err != nil {

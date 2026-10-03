@@ -28,8 +28,13 @@ const messageDensity = chatPage?.dataset.messageDensity || "comfortable";
 const showTimestamps = chatPage?.dataset.showTimestamps !== "false";
 const showImagePreviews = chatPage?.dataset.showImagePreviews !== "false";
 let lastMessageId = 0;
+let globalMessageCursor = 0;
+let globalMessageCursorReady = false;
+let unreadTitleCount = 0;
+let unreadPollInProgress = false;
 let polling = false;
 let activeChannel = "global";
+const originalDocumentTitle = document.title;
 
 if (chatPage) {
   chatPage.dataset.messageDensity = messageDensity;
@@ -78,6 +83,52 @@ function setConnection(connected) {
   chatConnection.textContent = connected ? "Connected" : "Reconnecting…";
   chatConnection.classList.toggle("offline", !connected);
   chatConnection.hidden = connected;
+}
+
+function updateUnreadDocumentTitle() {
+  document.title = unreadTitleCount > 0
+    ? `+${unreadTitleCount} — ${originalDocumentTitle}`
+    : originalDocumentTitle;
+}
+
+function observeGlobalMessages(messages) {
+  if (!Array.isArray(messages)) return;
+  if (!globalMessageCursorReady) {
+    for (const message of messages) {
+      globalMessageCursor = Math.max(globalMessageCursor, message.id);
+    }
+    globalMessageCursorReady = true;
+    return;
+  }
+
+  for (const message of messages) {
+    if (message.id <= globalMessageCursor) continue;
+    globalMessageCursor = message.id;
+    if (message.username !== currentUser && document.visibilityState === "hidden") {
+      unreadTitleCount += 1;
+    }
+  }
+  updateUnreadDocumentTitle();
+}
+
+async function pollGlobalMessagesForTitle() {
+  if (activeChannel !== "self" || !globalMessageCursorReady || unreadPollInProgress) return;
+  unreadPollInProgress = true;
+  try {
+    const response = await fetch(`/chat/messages?channel=global&after=${globalMessageCursor}`, {
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) {
+      throw new Error("Could not check for new global messages.");
+    }
+    const data = await response.json();
+    observeGlobalMessages(data.messages);
+    clearError();
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    unreadPollInProgress = false;
+  }
 }
 
 function formatTime(value) {
@@ -228,6 +279,9 @@ async function loadMessages() {
     }
 
     const data = await response.json();
+    if (requestedChannel === "global") {
+      observeGlobalMessages(data.messages);
+    }
     if (requestedChannel !== activeChannel) return;
     for (const message of data.messages || []) {
       appendMessage(message);
@@ -475,5 +529,13 @@ messageList.addEventListener("scroll", () => {
 
 newMessages.addEventListener("click", scrollToBottom);
 
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && unreadTitleCount > 0) {
+    unreadTitleCount = 0;
+    updateUnreadDocumentTitle();
+  }
+});
+
 loadMessages().then(scrollToBottom);
 setInterval(loadMessages, 2000);
+setInterval(pollGlobalMessagesForTitle, 2000);

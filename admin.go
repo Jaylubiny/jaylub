@@ -5,9 +5,11 @@ package main
 import (
 	"bufio"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -16,6 +18,8 @@ import (
 )
 
 const dbPath = "internal/database/users.db"
+const musicDBPath = "internal/database/music.db"
+const musicUploadDir = "data/mp3s"
 
 func main() {
 	reader := bufio.NewReader(os.Stdin)
@@ -49,6 +53,8 @@ func main() {
 		removeUserFromLeaderboardSection(db, reader)
 	case "8":
 		resetUserPassword(db, reader)
+	case "9":
+		removeMusicTrack(reader)
 	default:
 		log.Fatal("unknown action")
 	}
@@ -65,7 +71,132 @@ func printMenu() {
 	fmt.Println("6. Give Jaylive gold")
 	fmt.Println("7. Remove user from one Jaylive leaderboard section")
 	fmt.Println("8. Reset a user's password")
+	fmt.Println("9. Remove a music track by ID")
 	fmt.Println()
+}
+
+func removeMusicTrack(reader *bufio.Reader) {
+	songID := prompt(reader, "Track ID to remove: ")
+	if songID == "" {
+		log.Fatal("track ID is required")
+	}
+
+	musicDB, err := sql.Open("sqlite3", "file:"+musicDBPath+"?_foreign_keys=on&_busy_timeout=5000")
+	if err != nil {
+		log.Fatalf("open music database: %v", err)
+	}
+	defer musicDB.Close()
+	if err := musicDB.Ping(); err != nil {
+		log.Fatalf("connect to music database: %v", err)
+	}
+
+	var title string
+	err = musicDB.QueryRow(`SELECT title FROM songs WHERE id = ?`, songID).Scan(&title)
+	if errors.Is(err, sql.ErrNoRows) {
+		log.Fatalf("track %q does not exist", songID)
+	}
+	if err != nil {
+		log.Fatalf("look up music track: %v", err)
+	}
+	fmt.Printf("Track: %s (%s)\n", title, songID)
+	if prompt(reader, `Type "DELETE" to remove this track: `) != "DELETE" {
+		log.Fatal("track deletion cancelled")
+	}
+
+	if err := removeMusicTrackByID(musicDB, musicUploadDir, songID); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Removed music track %q (%s).\n", title, songID)
+}
+
+func removeMusicTrackByID(db *sql.DB, uploadDir, songID string) error {
+	songID = strings.TrimSpace(songID)
+	if songID == "" {
+		return fmt.Errorf("track ID is required")
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin music track removal: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	var fileName string
+	if err := tx.QueryRow(`SELECT file_path FROM songs WHERE id = ?`, songID).Scan(&fileName); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("track %q does not exist", songID)
+		}
+		return fmt.Errorf("look up music track: %w", err)
+	}
+	if fileName == "" || filepath.Base(fileName) != fileName || strings.ToLower(filepath.Ext(fileName)) != ".mp3" {
+		return fmt.Errorf("track %q has an invalid stored file path", songID)
+	}
+
+	filePath := filepath.Join(uploadDir, fileName)
+	var stagedPath string
+	if _, err := os.Stat(filePath); err == nil {
+		temporary, err := os.CreateTemp(uploadDir, ".admin-delete-*.tmp")
+		if err != nil {
+			return fmt.Errorf("prepare track file removal: %w", err)
+		}
+		stagedPath = temporary.Name()
+		if err := temporary.Close(); err != nil {
+			_ = os.Remove(stagedPath)
+			return fmt.Errorf("prepare track file removal: %w", err)
+		}
+		if err := os.Remove(stagedPath); err != nil {
+			return fmt.Errorf("prepare track file removal: %w", err)
+		}
+		if err := os.Rename(filePath, stagedPath); err != nil {
+			return fmt.Errorf("stage track file for removal: %w", err)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect track file: %w", err)
+	}
+
+	restoreStagedFile := func() error {
+		if stagedPath == "" {
+			return nil
+		}
+		if err := os.Rename(stagedPath, filePath); err != nil {
+			return fmt.Errorf("restore track file after failed removal: %w", err)
+		}
+		return nil
+	}
+	rollback := func(cause error) error {
+		rollbackErr := tx.Rollback()
+		restoreErr := restoreStagedFile()
+		return errors.Join(cause, rollbackErr, restoreErr)
+	}
+
+	result, err := tx.Exec(`DELETE FROM songs WHERE id = ?`, songID)
+	if err != nil {
+		return rollback(fmt.Errorf("remove music track record: %w", err))
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		return rollback(fmt.Errorf("verify music track removal: %w", err))
+	}
+	if deleted != 1 {
+		return rollback(fmt.Errorf("track %q does not exist", songID))
+	}
+	if err := tx.Commit(); err != nil {
+		restoreErr := restoreStagedFile()
+		return errors.Join(fmt.Errorf("commit music track removal: %w", err), restoreErr)
+	}
+	committed = true
+
+	if stagedPath != "" {
+		if err := os.Remove(stagedPath); err != nil {
+			return fmt.Errorf("track %q was removed from the library, but its MP3 file could not be deleted: %w", songID, err)
+		}
+	}
+	return nil
 }
 
 func resetUserPassword(db *sql.DB, reader *bufio.Reader) {

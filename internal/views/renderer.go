@@ -118,20 +118,29 @@ func (r *Renderer) RenderWithSEO(w http.ResponseWriter, req *http.Request, name 
 		return
 	}
 	if user, ok := auth.UserFromContext(req.Context()); ok {
-		data.Username = user.Username
-		data.Initials = initials(user.Username)
-		data.Stats = r.profileStats(user)
-		data.ChatUnreadCount = r.chatUnreadCount(user)
-		if settings, err := r.chatSettings(user); err == nil {
-			data.ChatSettings = settings
-		} else {
-			data.ChatSettings = auth.DefaultChatSettings()
-		}
+		data = r.withProfileData(data, user)
 	}
 
 	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
 		http.Error(w, "Template Error", http.StatusInternalServerError)
 	}
+}
+
+func (r *Renderer) ProfileMenuData(user auth.User) PageData {
+	return r.withProfileData(PageData{}, user)
+}
+
+func (r *Renderer) withProfileData(data PageData, user auth.User) PageData {
+	data.Username = user.Username
+	data.Initials = initials(user.Username)
+	data.Stats = r.profileStats(user)
+	data.ChatUnreadCount = r.chatUnreadCount(user)
+	if settings, err := r.chatSettings(user); err == nil {
+		data.ChatSettings = settings
+	} else {
+		data.ChatSettings = auth.DefaultChatSettings()
+	}
+	return data
 }
 
 func populateSEO(data *PageData, seo SEOData) error {

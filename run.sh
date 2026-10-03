@@ -3,10 +3,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
+umask 077
 
 # --- LOAD ENVIRONMENT VARIABLES ---
 if [ -f internal/database/.env ]; then
     echo "Loading environment variables from internal/database/.env..."
+    chmod 600 internal/database/.env
     set -a
     source internal/database/.env
     set +a

@@ -4,8 +4,10 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -31,6 +33,90 @@ func TestPrintMenuIncludesPasswordResetOption(t *testing.T) {
 	}
 	if !strings.Contains(string(output), "8. Reset a user's password") {
 		t.Fatalf("admin menu does not show password reset option:\n%s", output)
+	}
+	if !strings.Contains(string(output), "9. Remove a music track by ID") {
+		t.Fatalf("admin menu does not show music track removal option:\n%s", output)
+	}
+}
+
+func TestRemoveMusicTrackByIDRemovesTrackFileAndFavorites(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "music.db")+"?_foreign_keys=on")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	_, err = db.Exec(`
+		CREATE TABLE songs (id TEXT PRIMARY KEY, title TEXT NOT NULL, file_path TEXT NOT NULL);
+		CREATE TABLE user_favorites (
+			user_id INTEGER NOT NULL,
+			song_id TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+			PRIMARY KEY (user_id, song_id)
+		);
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	uploadDir := t.TempDir()
+	const songID = "7ca6802d-e997-4f85-b169-9185df172c1a"
+	fileName := songID + ".mp3"
+	filePath := filepath.Join(uploadDir, fileName)
+	if err := os.WriteFile(filePath, []byte("mp3 data"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO songs (id, title, file_path) VALUES (?, 'Track', ?)`, songID, fileName); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO user_favorites (user_id, song_id) VALUES (1, ?)`, songID); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := removeMusicTrackByID(db, uploadDir, songID); err != nil {
+		t.Fatalf("remove music track: %v", err)
+	}
+	if _, err := os.Stat(filePath); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("track file still exists or cannot be checked: %v", err)
+	}
+	var songs, favorites int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM songs WHERE id = ?`, songID).Scan(&songs); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM user_favorites WHERE song_id = ?`, songID).Scan(&favorites); err != nil {
+		t.Fatal(err)
+	}
+	if songs != 0 || favorites != 0 {
+		t.Errorf("remaining track rows = %d, favorite rows = %d; want both zero", songs, favorites)
+	}
+}
+
+func TestRemoveMusicTrackByIDRejectsMissingAndUnsafePaths(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "music.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE songs (id TEXT PRIMARY KEY, title TEXT NOT NULL, file_path TEXT NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	uploadDir := t.TempDir()
+	const songID = "7ca6802d-e997-4f85-b169-9185df172c1a"
+
+	if err := removeMusicTrackByID(db, uploadDir, songID); err == nil {
+		t.Fatal("removing missing track succeeded")
+	}
+
+	if _, err := db.Exec(`INSERT INTO songs (id, title, file_path) VALUES (?, 'Track', ?)`, songID, "../outside.mp3"); err != nil {
+		t.Fatal(err)
+	}
+	if err := removeMusicTrackByID(db, uploadDir, songID); err == nil {
+		t.Fatal("removing track with unsafe path succeeded")
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM songs WHERE id = ?`, songID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Errorf("unsafe track rows = %d, want 1", count)
 	}
 }
 

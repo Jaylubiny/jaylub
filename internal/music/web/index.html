@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111318">
+  <title>Jaylub Music</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+{{define "content"}}
+  <header class="topbar">
+    <button id="menu-toggle" class="icon-button" type="button" aria-label="Open navigation" aria-expanded="true" aria-controls="sidebar">☰</button>
+    <p class="header-caption">Music library</p>
+    <div class="header-actions">
+      {{if .Username}}
+      <div class="user-menu" data-user-menu>
+        <button class="profile-button" type="button" data-user-menu-button aria-haspopup="true" aria-expanded="false">
+          <span class="profile-avatar" aria-hidden="true">{{.Initials}}</span>
+          <span class="profile-name">{{.Username}}</span>
+        </button>
+        <div class="user-dropdown" data-user-dropdown hidden>
+          <a class="profile-settings-link" href="https://jaylub.com/settings">Settings</a>
+          <div class="profile-stats" aria-label="Profile stats">
+            <div class="profile-stat">
+              <span>Messages</span>
+              <strong>{{.Stats.MessagesSent}}</strong>
+            </div>
+            <div class="profile-stat">
+              <span>Gold</span>
+              <strong>{{.Stats.Gold}}</strong>
+            </div>
+            <div class="profile-stat">
+              <span>Lifetime Kills</span>
+              <strong>{{.Stats.LifetimeKills}}</strong>
+            </div>
+            <div class="profile-stat">
+              <span>Level</span>
+              <strong>{{.Stats.GameLevel}}</strong>
+            </div>
+            <div class="profile-stat">
+              <span>Best Run Kills</span>
+              <strong>{{.Stats.BestRunKills}}</strong>
+            </div>
+            <div class="profile-stat">
+              <span>Best Time</span>
+              <strong>{{.Stats.BestRunTime}}</strong>
+            </div>
+          </div>
+          <form method="post" action="https://jaylub.com/logout">
+            <button type="submit">Logout</button>
+          </form>
+        </div>
+      </div>
+      {{else}}
+      <a class="account-button" href="https://jaylub.com/login">Login</a>
+      {{end}}
+    </div>
+  </header>
+
+  <div class="app-layout">
+    <aside id="sidebar" class="sidebar open" aria-label="Music navigation">
+      <nav class="tab-list" aria-label="Library">
+        <button class="tab-button active" type="button" data-tab="global" aria-current="page">Global library</button>
+        <button class="tab-button" type="button" data-tab="favorites">Favorites</button>
+        <button class="tab-button" type="button" data-tab="upload">Upload music</button>
+      </nav>
+      <p class="sidebar-note">MP3 audio only · 50 MB maximum per track</p>
+    </aside>
+
+    <button id="menu-backdrop" class="menu-backdrop" type="button" aria-label="Close navigation" hidden></button>
+
+    <main id="main-content" class="main-content" tabindex="-1">
+      <section id="view-global" class="view" aria-labelledby="global-title">
+        <div class="view-heading">
+          <div><p class="eyebrow">Browse</p><h1 id="global-title">Global library</h1></div>
+          <button class="secondary-button" type="button" data-refresh>Refresh</button>
+        </div>
+        <div id="global-list" class="song-list" aria-live="polite"></div>
+      </section>
+
+      <section id="view-favorites" class="view" aria-labelledby="favorites-title" hidden>
+        <div class="view-heading">
+          <div><p class="eyebrow">Your collection</p><h1 id="favorites-title">Favorites</h1></div>
+          <button id="play-playlist" class="primary-button" type="button">Play playlist</button>
+        </div>
+        <div id="favorites-list" class="song-list" aria-live="polite"></div>
+      </section>
+
+      <section id="view-upload" class="view" aria-labelledby="upload-title" hidden>
+        <div class="view-heading">
+          <div><p class="eyebrow">Add to the library</p><h1 id="upload-title">Upload music</h1></div>
+        </div>
+        <form id="upload-form" class="upload-card">
+          <label class="file-drop">
+            <span class="file-icon" aria-hidden="true">♫</span>
+            <span class="file-title">Choose an MP3 file</span>
+            <span class="file-help">MP3 only · Maximum size 50 MB</span>
+            <input id="audio-file" name="file" type="file" accept=".mp3,audio/mpeg" required>
+          </label>
+          <div class="upload-progress" aria-live="polite">
+            <progress id="upload-progress" max="100" value="0" hidden></progress>
+            <p id="upload-message" role="status"></p>
+          </div>
+          <button id="upload-submit" class="primary-button" type="submit">Upload track</button>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <footer class="player" aria-label="Audio player">
+    <audio id="audio-player" preload="metadata"></audio>
+    <div class="now-playing">
+      <div class="record-art" aria-hidden="true">♪</div>
+      <div class="track-meta">
+        <strong id="now-title">Nothing playing</strong>
+        <span id="now-id">Select a track to see its ID</span>
+      </div>
+    </div>
+    <div class="playback">
+      <div class="transport">
+        <button id="previous-track" class="player-button" type="button" aria-label="Previous track">◀|</button>
+        <button id="play-toggle" class="play-button" type="button" aria-label="Play">▶</button>
+        <button id="next-track" class="player-button" type="button" aria-label="Next track">|▶</button>
+      </div>
+      <div class="timeline">
+        <span id="current-time">0:00</span>
+        <input id="seek-bar" type="range" min="0" max="1000" value="0" aria-label="Seek through track">
+        <span id="total-time">0:00</span>
+      </div>
+    </div>
+    <label class="volume-control">
+      <span aria-hidden="true">♪</span>
+      <input id="volume" type="range" min="0" max="1" step="0.01" value="0.8" aria-label="Volume">
+    </label>
+  </footer>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+{{end}}
+{{template "content" .}}
+</body>
+</html>

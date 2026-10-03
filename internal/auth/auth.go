@@ -89,6 +89,10 @@ func New(dbPath string) (*Service, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	if err := os.Chmod(dbPath, 0600); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("secure database permissions: %w", err)
+	}
 
 	return service, nil
 }
