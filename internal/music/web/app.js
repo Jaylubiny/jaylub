@@ -1,6 +1,8 @@
 (() => {
   "use strict";
 
+  const maxBatchFiles = 25;
+  const maxUploadBytes = 100 * 1024 * 1024;
   const audio = document.getElementById("audio-player");
   const sidebar = document.getElementById("sidebar");
   const menuToggle = document.getElementById("menu-toggle");
@@ -9,6 +11,10 @@
   const state = {
     songs: [],
     favorites: [],
+    playlists: [],
+    currentPlaylist: null,
+    pendingPlaylistSong: null,
+    globalSearch: "",
     queue: [],
     queueIndex: -1,
     activeTab: "global",
@@ -65,7 +71,7 @@
     return response.status === 204 ? null : response.json();
   }
 
-  function createSongRow(song) {
+  function createSongRow(song, playlistId = null) {
     const row = document.createElement("article");
     row.className = "song-row";
 
@@ -95,7 +101,11 @@
     play.textContent = "▶";
     play.setAttribute("aria-label", `Play ${song.title}`);
     play.addEventListener("click", () => {
-      const list = state.activeTab === "favorites" ? state.favorites : state.songs;
+      const list = state.activeTab === "favorites"
+        ? state.favorites
+        : state.activeTab === "playlists" && state.currentPlaylist
+          ? state.currentPlaylist.songs
+          : state.songs;
       playQueue(list, song.id);
     });
 
@@ -107,11 +117,29 @@
     favorite.setAttribute("aria-pressed", String(song.is_favorite));
     favorite.addEventListener("click", () => toggleFavorite(song));
     actions.append(play, favorite);
+
+    if (playlistId !== null) {
+      const remove = document.createElement("button");
+      remove.className = "row-button";
+      remove.type = "button";
+      remove.textContent = "−";
+      remove.setAttribute("aria-label", `Remove ${song.title} from this playlist`);
+      remove.addEventListener("click", () => removeSongFromPlaylist(playlistId, song));
+      actions.append(remove);
+    } else {
+      const addToPlaylist = document.createElement("button");
+      addToPlaylist.className = "row-button";
+      addToPlaylist.type = "button";
+      addToPlaylist.textContent = "+";
+      addToPlaylist.setAttribute("aria-label", `Add ${song.title} to a playlist`);
+      addToPlaylist.addEventListener("click", () => openPlaylistDialog(song));
+      actions.append(addToPlaylist);
+    }
     row.append(art, titleCell, duration, actions);
     return row;
   }
 
-  function renderList(container, songs, emptyMessage) {
+  function renderList(container, songs, emptyMessage, playlistId = null) {
     container.replaceChildren();
     if (!songs.length) {
       const empty = document.createElement("p");
@@ -120,18 +148,116 @@
       container.append(empty);
       return;
     }
-    songs.forEach((song) => container.append(createSongRow(song)));
+    songs.forEach((song) => container.append(createSongRow(song, playlistId)));
   }
 
   async function loadSongs() {
-    const [all, favorites] = await Promise.all([
+    const [all, favorites, playlists] = await Promise.all([
       api("/api/songs"),
-      api("/api/favorites")
+      api("/api/favorites"),
+      api("/api/playlists")
     ]);
     state.songs = all.songs;
     state.favorites = favorites.songs;
-    renderList(byId("global-list"), state.songs, "No tracks yet. Add the first MP3 from Upload music.");
+    state.playlists = playlists.playlists;
+    renderGlobalLibrary();
     renderList(byId("favorites-list"), state.favorites, "Your favorites will appear here.");
+    renderPlaylists();
+    if (state.currentPlaylist && state.playlists.some((playlist) => playlist.id === state.currentPlaylist.id)) {
+      await loadPlaylist(state.currentPlaylist.id);
+    } else {
+      state.currentPlaylist = null;
+      byId("playlist-detail").hidden = true;
+    }
+  }
+
+  function renderGlobalLibrary() {
+    const query = state.globalSearch.trim().toLowerCase();
+    const songs = query
+      ? state.songs.filter((song) =>
+          [song.title, song.artist, song.album, song.id]
+            .some((value) => value.toLowerCase().includes(query)))
+      : state.songs;
+    const emptyMessage = state.songs.length
+      ? "No tracks match your search."
+      : "No tracks yet. Add the first MP3 from Upload music.";
+    renderList(byId("global-list"), songs, emptyMessage);
+  }
+
+  function renderPlaylists() {
+    const container = byId("playlist-list");
+    container.replaceChildren();
+    if (!state.playlists.length) {
+      const empty = document.createElement("p");
+      empty.className = "empty-state";
+      empty.textContent = "You haven't made any playlists yet.";
+      container.append(empty);
+      return;
+    }
+    state.playlists.forEach((playlist) => {
+      const button = document.createElement("button");
+      button.className = `playlist-card${state.currentPlaylist?.id === playlist.id ? " active" : ""}`;
+      button.type = "button";
+      button.setAttribute("aria-pressed", String(state.currentPlaylist?.id === playlist.id));
+      const name = document.createElement("strong");
+      name.textContent = playlist.name;
+      const count = document.createElement("span");
+      count.textContent = `${playlist.song_count} ${playlist.song_count === 1 ? "track" : "tracks"}`;
+      button.append(name, count);
+      button.addEventListener("click", () => {
+        showPlaylist(playlist.id).catch((error) => showToast(error.message));
+      });
+      container.append(button);
+    });
+  }
+
+  async function showPlaylist(playlistId) {
+    await loadPlaylist(playlistId);
+    renderPlaylists();
+  }
+
+  async function loadPlaylist(playlistId) {
+    const data = await api(`/api/playlists/${encodeURIComponent(playlistId)}`);
+    state.currentPlaylist = { ...data.playlist, songs: data.songs };
+    byId("playlist-detail-title").textContent = data.playlist.name;
+    byId("playlist-detail").hidden = false;
+    renderList(
+      byId("playlist-song-list"),
+      data.songs,
+      "This playlist is empty. Add tracks with the + button in the library.",
+      playlistId
+    );
+  }
+
+  function openPlaylistDialog(song) {
+    if (!state.playlists.length) {
+      showToast("Create a playlist before adding tracks.");
+      switchTab("playlists");
+      byId("playlist-name").focus();
+      return;
+    }
+    const select = byId("playlist-select");
+    select.replaceChildren();
+    state.playlists.forEach((playlist) => {
+      const option = document.createElement("option");
+      option.value = String(playlist.id);
+      option.textContent = playlist.name;
+      select.append(option);
+    });
+    state.pendingPlaylistSong = song;
+    byId("playlist-song-title").textContent = song.title;
+    byId("playlist-dialog").showModal();
+  }
+
+  async function removeSongFromPlaylist(playlistId, song) {
+    try {
+      await api(`/api/playlists/${encodeURIComponent(playlistId)}/songs/${encodeURIComponent(song.id)}`, {
+        method: "DELETE"
+      });
+      await loadSongs();
+    } catch (error) {
+      showToast(error.message);
+    }
   }
 
   async function toggleFavorite(song) {
@@ -194,7 +320,7 @@
   }
 
   function switchTab(tabName) {
-    if (!["global", "favorites", "upload"].includes(tabName)) return;
+    if (!["global", "favorites", "playlists", "upload"].includes(tabName)) return;
     state.activeTab = tabName;
     document.querySelectorAll(".tab-button").forEach((button) => {
       const active = button.dataset.tab === tabName;
@@ -208,7 +334,7 @@
     if (mobileNavigation.matches) setMenuOpen(false);
   }
 
-  function upload(file) {
+  function upload(file, onProgress) {
     return new Promise((resolve, reject) => {
       const request = new XMLHttpRequest();
       const formData = new FormData();
@@ -216,8 +342,7 @@
       request.open("POST", "/api/upload");
       request.withCredentials = true;
       request.upload.addEventListener("progress", (event) => {
-        if (!event.lengthComputable) return;
-        byId("upload-progress").value = Math.round(event.loaded / event.total * 100);
+        if (event.lengthComputable) onProgress(event.loaded, event.total);
       });
       request.addEventListener("load", () => {
         let response;
@@ -277,6 +402,10 @@
     document.querySelector("[data-refresh]").addEventListener("click", () => {
       loadSongs().catch((error) => showToast(error.message));
     });
+    byId("global-search").addEventListener("input", (event) => {
+      state.globalSearch = event.target.value;
+      renderGlobalLibrary();
+    });
     setMenuOpen(state.menuOpen);
     menuToggle.addEventListener("click", () => setMenuOpen(!state.menuOpen));
     menuBackdrop.addEventListener("click", () => setMenuOpen(false));
@@ -304,31 +433,112 @@
       if (!state.favorites.length) return showToast("Add some favorites to build a playlist.");
       playQueue(state.favorites);
     });
+    byId("playlist-create-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const nameInput = byId("playlist-name");
+      try {
+        const result = await api("/api/playlists", {
+          method: "POST",
+          body: JSON.stringify({ name: nameInput.value })
+        });
+        nameInput.value = "";
+        state.currentPlaylist = { ...result.playlist, songs: [] };
+        await loadSongs();
+        byId("playlist-detail").scrollIntoView({ behavior: "smooth", block: "start" });
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
+    byId("playlist-song-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!state.pendingPlaylistSong) return;
+      const playlistId = byId("playlist-select").value;
+      try {
+        await api(`/api/playlists/${encodeURIComponent(playlistId)}/songs`, {
+          method: "POST",
+          body: JSON.stringify({ song_id: state.pendingPlaylistSong.id })
+        });
+        byId("playlist-dialog").close();
+        state.pendingPlaylistSong = null;
+        await loadSongs();
+        showToast("Track added to playlist.");
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
+    byId("playlist-dialog-cancel").addEventListener("click", () => {
+      byId("playlist-dialog").close();
+      state.pendingPlaylistSong = null;
+    });
+    byId("playlist-dialog").addEventListener("close", () => {
+      state.pendingPlaylistSong = null;
+    });
+    byId("play-user-playlist").addEventListener("click", () => {
+      if (!state.currentPlaylist?.songs.length) return showToast("Add tracks to this playlist first.");
+      playQueue(state.currentPlaylist.songs);
+    });
+    byId("delete-user-playlist").addEventListener("click", async () => {
+      if (!state.currentPlaylist || !window.confirm(`Delete "${state.currentPlaylist.name}"?`)) return;
+      try {
+        await api(`/api/playlists/${encodeURIComponent(state.currentPlaylist.id)}`, { method: "DELETE" });
+        state.currentPlaylist = null;
+        await loadSongs();
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
     byId("upload-form").addEventListener("submit", async (event) => {
       event.preventDefault();
-      const file = byId("audio-file").files[0];
+      const files = Array.from(byId("audio-file").files);
       const message = byId("upload-message");
       const progress = byId("upload-progress");
-      if (!file) return;
-      if (!file.name.toLowerCase().endsWith(".mp3")) {
-        message.textContent = "Choose an MP3 file.";
+      if (!files.length) return;
+      if (files.length > maxBatchFiles) {
+        message.textContent = `Choose no more than ${maxBatchFiles} files at a time.`;
         return;
       }
-      if (file.size > 100 * 1024 * 1024) {
-        message.textContent = "This file is larger than the 100 MB limit.";
+      const invalidFile = files.find((file) => !file.name.toLowerCase().endsWith(".mp3"));
+      if (invalidFile) {
+        message.textContent = `${invalidFile.name} is not an MP3 file.`;
         return;
       }
+      const oversizedFile = files.find((file) => file.size > maxUploadBytes);
+      if (oversizedFile) {
+        message.textContent = `${oversizedFile.name} is larger than the 100 MB limit.`;
+        return;
+      }
+      const totalBytes = files.reduce((total, file) => total + file.size, 0);
+      let completedBytes = 0;
+      let uploadedCount = 0;
+      const failures = [];
       progress.hidden = false;
       progress.value = 0;
       byId("upload-submit").disabled = true;
-      message.textContent = "Uploading and reading track information…";
       try {
-        await upload(file);
-        message.textContent = "Track uploaded successfully.";
-        byId("upload-form").reset();
-        await loadSongs();
+        for (const [index, file] of files.entries()) {
+          message.textContent = `Uploading ${index + 1} of ${files.length}: ${file.name}`;
+          try {
+            await upload(file, (loaded) => {
+              progress.value = totalBytes === 0
+                ? 0
+                : Math.round((completedBytes + Math.min(loaded, file.size)) / totalBytes * 100);
+            });
+            uploadedCount++;
+          } catch (error) {
+            failures.push(`${file.name}: ${error.message}`);
+          }
+          completedBytes += file.size;
+          progress.value = totalBytes === 0 ? 100 : Math.round(completedBytes / totalBytes * 100);
+        }
+        if (uploadedCount) {
+          await loadSongs();
+          byId("upload-form").reset();
+        }
+        message.textContent = failures.length
+          ? `Uploaded ${uploadedCount} of ${files.length} files. Failed: ${failures.join("; ")}`
+          : `Uploaded ${uploadedCount} ${uploadedCount === 1 ? "track" : "tracks"} successfully.`;
       } catch (error) {
-        message.textContent = error.message;
+        message.textContent = `Uploaded ${uploadedCount} of ${files.length} files, but the library could not refresh: ${error.message}`;
       } finally {
         byId("upload-submit").disabled = false;
       }

@@ -24,8 +24,8 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/favicon.ico" type="image/png">
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
-  <link rel="stylesheet" href="/assets/styles.css?v=pwa-2">
-  <script src="/assets/app.js?v=pwa-2" defer></script>
+  <link rel="stylesheet" href="/assets/styles.css?v=pwa-5">
+  <script src="/assets/app.js?v=pwa-5" defer></script>
 </head>
 <body>
 {{define "content"}}
@@ -83,6 +83,7 @@
       <nav class="tab-list" aria-label="Library">
         <button class="tab-button active" type="button" data-tab="global" aria-current="page">Global library</button>
         <button class="tab-button" type="button" data-tab="favorites">Favorites</button>
+        <button class="tab-button" type="button" data-tab="playlists">Playlists</button>
         <button class="tab-button" type="button" data-tab="upload">Upload music</button>
       </nav>
       <p class="sidebar-note">MP3 audio only · 100 MB maximum per track</p>
@@ -96,6 +97,10 @@
           <div><p class="eyebrow">Browse</p><h1 id="global-title">Global library</h1></div>
           <button class="secondary-button" type="button" data-refresh>Refresh</button>
         </div>
+        <label class="library-search">
+          <span class="visually-hidden">Search the global library</span>
+          <input id="global-search" type="search" placeholder="Search tracks…" autocomplete="off" aria-controls="global-list">
+        </label>
         <div id="global-list" class="song-list" aria-live="polite"></div>
       </section>
 
@@ -107,6 +112,30 @@
         <div id="favorites-list" class="song-list" aria-live="polite"></div>
       </section>
 
+      <section id="view-playlists" class="view" aria-labelledby="playlists-title" hidden>
+        <div class="view-heading">
+          <div><p class="eyebrow">Your collection</p><h1 id="playlists-title">Playlists</h1></div>
+        </div>
+        <form id="playlist-create-form" class="playlist-create">
+          <label for="playlist-name">Create a playlist</label>
+          <div class="playlist-create-controls">
+            <input id="playlist-name" name="name" type="text" maxlength="80" placeholder="Playlist name" required>
+            <button class="primary-button" type="submit">Create playlist</button>
+          </div>
+        </form>
+        <div id="playlist-list" class="playlist-list" aria-live="polite"></div>
+        <section id="playlist-detail" class="playlist-detail" aria-labelledby="playlist-detail-title" hidden>
+          <div class="view-heading">
+            <div><p class="eyebrow">Playlist</p><h2 id="playlist-detail-title"></h2></div>
+            <div class="playlist-detail-actions">
+              <button id="play-user-playlist" class="primary-button" type="button">Play playlist</button>
+              <button id="delete-user-playlist" class="secondary-button" type="button">Delete playlist</button>
+            </div>
+          </div>
+          <div id="playlist-song-list" class="song-list" aria-live="polite"></div>
+        </section>
+      </section>
+
       <section id="view-upload" class="view" aria-labelledby="upload-title" hidden>
         <div class="view-heading">
           <div><p class="eyebrow">Add to the library</p><h1 id="upload-title">Upload music</h1></div>
@@ -114,9 +143,9 @@
         <form id="upload-form" class="upload-card">
           <label class="file-drop">
             <span class="file-icon" aria-hidden="true">♫</span>
-            <span class="file-title">Choose an MP3 file</span>
-            <span class="file-help">MP3 only · Maximum size 100 MB</span>
-            <input id="audio-file" name="file" type="file" accept=".mp3,audio/mpeg" required>
+            <span class="file-title">Choose MP3 files</span>
+            <span class="file-help">Select up to 25 files · MP3 only · Maximum size 100 MB each</span>
+            <input id="audio-file" name="file" type="file" accept=".mp3,audio/mpeg" multiple required>
           </label>
           <div class="upload-progress" aria-live="polite">
             <progress id="upload-progress" max="100" value="0" hidden></progress>
@@ -127,6 +156,19 @@
       </section>
     </main>
   </div>
+
+  <dialog id="playlist-dialog" class="playlist-dialog" aria-labelledby="playlist-dialog-title">
+    <form id="playlist-song-form">
+      <h2 id="playlist-dialog-title">Add to playlist</h2>
+      <p id="playlist-song-title" class="playlist-dialog-song"></p>
+      <label for="playlist-select">Choose a playlist</label>
+      <select id="playlist-select" required></select>
+      <div class="playlist-dialog-actions">
+        <button id="playlist-dialog-cancel" class="secondary-button" type="button">Cancel</button>
+        <button class="primary-button" type="submit">Add track</button>
+      </div>
+    </form>
+  </dialog>
 
   <footer class="player" aria-label="Audio player">
     <audio id="audio-player" preload="metadata"></audio>

@@ -89,6 +89,28 @@ func (s *Store) initSchema() error {
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_user_favorites_song_id ON user_favorites(song_id);
+
+		CREATE TABLE IF NOT EXISTS playlists (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 80),
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE (user_id, name COLLATE NOCASE),
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		);
+
+		CREATE TABLE IF NOT EXISTS playlist_songs (
+			playlist_id INTEGER NOT NULL,
+			song_id TEXT NOT NULL,
+			position INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (playlist_id, song_id),
+			FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
+			FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_playlist_songs_order
+			ON playlist_songs(playlist_id, position, created_at);
 	`)
 	if err != nil {
 		return fmt.Errorf("initialize music database schema: %w", err)

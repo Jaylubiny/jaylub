@@ -2,6 +2,7 @@ package music
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -13,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"jaylub/internal/auth"
 	"jaylub/internal/views"
@@ -53,7 +55,7 @@ func TestOpenStoreCreatesDatabaseAndSchemaOnFirstRun(t *testing.T) {
 	if _, err := os.Stat(dbPath); err != nil {
 		t.Fatalf("database file was not created: %v", err)
 	}
-	for _, table := range []string{"users", "songs", "user_favorites"} {
+	for _, table := range []string{"users", "songs", "user_favorites", "playlists", "playlist_songs"} {
 		var exists int
 		if err := store.db.QueryRow(
 			`SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?)`,
@@ -64,6 +66,86 @@ func TestOpenStoreCreatesDatabaseAndSchemaOnFirstRun(t *testing.T) {
 		if exists != 1 {
 			t.Errorf("table %q was not created", table)
 		}
+	}
+}
+
+func TestOpenStoreAddsPlaylistSchemaWithoutChangingExistingMusicData(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "existing", "music.db")
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0750); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT NOT NULL);
+		CREATE TABLE songs (
+			id TEXT PRIMARY KEY,
+			title TEXT NOT NULL,
+			artist TEXT NOT NULL,
+			album TEXT NOT NULL,
+			duration_seconds INTEGER NOT NULL CHECK (duration_seconds >= 0),
+			file_path TEXT NOT NULL UNIQUE,
+			uploaded_by INTEGER NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE CASCADE
+		);
+		CREATE TABLE user_favorites (
+			user_id INTEGER NOT NULL,
+			song_id TEXT NOT NULL,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (user_id, song_id),
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE
+		);
+		INSERT INTO users (id, username) VALUES (1, 'alice');
+		INSERT INTO songs (id, title, artist, album, duration_seconds, file_path, uploaded_by)
+		VALUES ('7ca6802d-e997-4f85-b169-9185df172c1a', 'Existing Track', 'Artist', 'Album', 42, 'existing.mp3', 1);
+		INSERT INTO user_favorites (user_id, song_id)
+		VALUES (1, '7ca6802d-e997-4f85-b169-9185df172c1a');
+	`)
+	if err != nil {
+		_ = db.Close()
+		t.Fatalf("create old music schema fixture: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close old music schema fixture: %v", err)
+	}
+
+	store, err := OpenStore(dbPath)
+	if err != nil {
+		t.Fatalf("open existing music database: %v", err)
+	}
+	defer store.Close()
+
+	for _, table := range []string{"playlists", "playlist_songs"} {
+		var exists int
+		if err := store.db.QueryRow(
+			`SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?)`,
+			table,
+		).Scan(&exists); err != nil {
+			t.Fatalf("check %s table: %v", table, err)
+		}
+		if exists != 1 {
+			t.Errorf("upgrade did not create %q table", table)
+		}
+	}
+	var username, title string
+	var favorites int
+	if err := store.db.QueryRow(`
+		SELECT u.username, s.title, COUNT(f.song_id)
+		FROM users u
+		JOIN songs s ON s.uploaded_by = u.id
+		LEFT JOIN user_favorites f ON f.user_id = u.id AND f.song_id = s.id
+		WHERE u.id = 1
+		GROUP BY u.id, s.id
+	`).Scan(&username, &title, &favorites); err != nil {
+		t.Fatalf("read existing music data after schema upgrade: %v", err)
+	}
+	if username != "alice" || title != "Existing Track" || favorites != 1 {
+		t.Errorf("existing data changed after schema upgrade: user=%q title=%q favorites=%d",
+			username, title, favorites)
 	}
 }
 
@@ -166,6 +248,13 @@ func TestIndexRendersAuthenticatedAccountActions(t *testing.T) {
 		`<strong>123</strong>`,
 		`<strong>1:30</strong>`,
 		`id="menu-toggle"`,
+		`data-tab="playlists">Playlists</button>`,
+		`id="playlist-create-form"`,
+		`id="playlist-song-form"`,
+		`id="global-search" type="search"`,
+		`<span class="visually-hidden">Search the global library</span>`,
+		`name="file" type="file" accept=".mp3,audio/mpeg" multiple required`,
+		`Select up to 25 files`,
 		`rel="manifest" href="/manifest.webmanifest"`,
 		`name="description" content="Jaylub Music is a self-hosted MP3 library`,
 		`property="og:title" content="Jaylub Music"`,
@@ -266,11 +355,14 @@ func TestFrontendAssetsServeIconAndDoNotCacheOldTrackDetails(t *testing.T) {
 		}
 		if assetPath == "/assets/app.js" {
 			body := response.Body.String()
-			if strings.Contains(body, "song.artist") || strings.Contains(body, "song.album") {
+			if strings.Contains(body, "textContent = song.artist") || strings.Contains(body, "textContent = song.album") {
 				t.Error("track UI still renders artist or album details")
 			}
 			if !strings.Contains(body, "`ID: ${song.id}`") {
 				t.Error("track UI does not render each song ID")
+			}
+			if !strings.Contains(body, "[song.title, song.artist, song.album, song.id]") {
+				t.Error("global library search does not include track metadata and ID")
 			}
 		}
 	}
@@ -303,8 +395,8 @@ func TestServiceWorkerOnlyCachesPublicShellAndUsesRootScope(t *testing.T) {
 		t.Errorf("service worker Cache-Control = %q, want no-cache", got)
 	}
 	script := response.Body.String()
-	if !strings.Contains(script, "jaylub-music-shell-v2") ||
-		!strings.Contains(script, "/assets/app.js?v=pwa-2") {
+	if !strings.Contains(script, "jaylub-music-shell-v5") ||
+		!strings.Contains(script, "/assets/app.js?v=pwa-5") {
 		t.Error("service worker shell cache is not versioned to refresh stale app assets")
 	}
 	if strings.Contains(script, `"/api/`) || strings.Contains(script, `"/api/stream`) {
@@ -356,6 +448,138 @@ func TestFavoritesAreScopedToAuthenticatedUser(t *testing.T) {
 		}
 		if len(payload.Songs) != test.wantFavorites {
 			t.Errorf("user %s favorites = %d, want %d", test.userID, len(payload.Songs), test.wantFavorites)
+		}
+	}
+}
+
+func TestPlaylistsArePrivateAndSupportTrackManagement(t *testing.T) {
+	store, handler, _ := newTestMusicHandler(t)
+	if err := store.ensureUser(1, "alice"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ensureUser(2, "bob"); err != nil {
+		t.Fatal(err)
+	}
+	const songID = "7ca6802d-e997-4f85-b169-9185df172c1a"
+	if _, err := store.db.Exec(`
+		INSERT INTO songs (id, title, artist, album, duration_seconds, file_path, uploaded_by)
+		VALUES (?, 'Test Track', 'Test Artist', 'Test Album', 123, 'test.mp3', 1)
+	`, songID); err != nil {
+		t.Fatal(err)
+	}
+
+	createBody, _ := json.Marshal(map[string]string{"name": "Road Trip"})
+	request := httptest.NewRequest(http.MethodPost, "/api/playlists", bytes.NewReader(createBody))
+	withTestUser(request, "1", "alice")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create playlist status = %d, want 201: %s", response.Code, response.Body.String())
+	}
+	var created struct {
+		Playlist Playlist `json:"playlist"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	if created.Playlist.Name != "Road Trip" || created.Playlist.ID <= 0 {
+		t.Fatalf("created playlist = %+v", created.Playlist)
+	}
+
+	addBody, _ := json.Marshal(map[string]string{"song_id": songID})
+	for i := 0; i < 2; i++ {
+		request = httptest.NewRequest(http.MethodPost,
+			fmt.Sprintf("/api/playlists/%d/songs", created.Playlist.ID), bytes.NewReader(addBody))
+		withTestUser(request, "1", "alice")
+		response = httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusNoContent {
+			t.Fatalf("add track attempt %d status = %d: %s", i+1, response.Code, response.Body.String())
+		}
+	}
+
+	request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/playlists/%d", created.Playlist.ID), nil)
+	withTestUser(request, "1", "alice")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("get playlist status = %d: %s", response.Code, response.Body.String())
+	}
+	var detail struct {
+		Playlist Playlist `json:"playlist"`
+		Songs    []Song   `json:"songs"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&detail); err != nil {
+		t.Fatal(err)
+	}
+	if detail.Playlist.SongCount != 1 || len(detail.Songs) != 1 || detail.Songs[0].ID != songID {
+		t.Fatalf("playlist detail did not contain the unique track: %+v", detail)
+	}
+
+	request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/playlists/%d", created.Playlist.ID), nil)
+	withTestUser(request, "2", "bob")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusNotFound {
+		t.Errorf("other user's playlist status = %d, want 404", response.Code)
+	}
+
+	request = httptest.NewRequest(http.MethodDelete,
+		fmt.Sprintf("/api/playlists/%d/songs/%s", created.Playlist.ID, songID), nil)
+	withTestUser(request, "1", "alice")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("remove track status = %d: %s", response.Code, response.Body.String())
+	}
+
+	request = httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/playlists/%d", created.Playlist.ID), nil)
+	withTestUser(request, "2", "bob")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusNotFound {
+		t.Errorf("other user's delete status = %d, want 404", response.Code)
+	}
+
+	request = httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/playlists/%d", created.Playlist.ID), nil)
+	withTestUser(request, "1", "alice")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("delete playlist status = %d: %s", response.Code, response.Body.String())
+	}
+	var remaining int
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM playlist_songs WHERE playlist_id = ?`, created.Playlist.ID).Scan(&remaining); err != nil {
+		t.Fatal(err)
+	}
+	if remaining != 0 {
+		t.Errorf("deleted playlist retained %d track memberships", remaining)
+	}
+}
+
+func TestCreatePlaylistValidatesAndUniquifiesNames(t *testing.T) {
+	_, handler, _ := newTestMusicHandler(t)
+	for _, name := range []string{"   ", strings.Repeat("x", 81)} {
+		body, _ := json.Marshal(map[string]string{"name": name})
+		request := httptest.NewRequest(http.MethodPost, "/api/playlists", bytes.NewReader(body))
+		withTestUser(request, "1", "alice")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusBadRequest {
+			t.Errorf("playlist name of %d runes status = %d, want 400", utf8.RuneCountInString(name), response.Code)
+		}
+	}
+	for _, name := range []string{"Road Trip", "road trip"} {
+		body, _ := json.Marshal(map[string]string{"name": name})
+		request := httptest.NewRequest(http.MethodPost, "/api/playlists", bytes.NewReader(body))
+		withTestUser(request, "1", "alice")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if name == "Road Trip" && response.Code != http.StatusCreated {
+			t.Fatalf("create first playlist status = %d: %s", response.Code, response.Body.String())
+		}
+		if name == "road trip" && response.Code != http.StatusConflict {
+			t.Errorf("duplicate playlist status = %d, want 409", response.Code)
 		}
 	}
 }

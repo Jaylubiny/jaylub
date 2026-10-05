@@ -67,7 +67,7 @@ it after account setup if it is not needed for ongoing maintenance.
 
 The database mirrors authenticated user IDs into its local `users` table to
 enforce foreign keys without exposing or modifying the main site's database
-schema. It stores song metadata and each user's favorites separately.
+schema. It stores song metadata, favorites, and user-owned playlists separately.
 
 ## API
 
@@ -75,12 +75,24 @@ schema. It stores song metadata and each user's favorites separately.
 - `GET /api/favorites` — current user's favorite playlist
 - `POST /api/favorites` — JSON body `{"song_id":"<uuid>"}`
 - `DELETE /api/favorites/{id}` — remove the current user's favorite
-- `POST /api/upload` — multipart field `file`, MP3 only, 100 MiB maximum
+- `GET /api/playlists` — list the current user's playlists
+- `POST /api/playlists` — create a playlist with JSON body `{"name":"<name>"}`
+- `GET /api/playlists/{id}` — get a playlist and its tracks
+- `DELETE /api/playlists/{id}` — delete the current user's playlist
+- `POST /api/playlists/{id}/songs` — add a track with JSON body `{"song_id":"<uuid>"}`
+- `DELETE /api/playlists/{id}/songs/{songID}` — remove a track from a playlist
+- `POST /api/upload` — one MP3 in multipart field `file`, 100 MiB maximum per file
 - `GET /api/stream?id=<uuid>` — MP3 stream with HTTP range/seek support
 
 The browser app is embedded into the Go binary. Tab changes do not replace its
 audio element, so playback continues while switching between library,
-favorites, and upload views.
+favorites, playlists, and upload views. Users can create multiple private
+playlists, add tracks from the library or favorites, play a playlist, remove
+tracks, and delete playlists; favorites remain available separately.
+The global library can be searched by track title, artist, album, or ID.
+The upload form accepts up to 25 selected MP3s and sends them individually, so
+each file retains the 100 MiB limit without requiring one oversized batch
+request.
 
 ## Install as a mobile app
 

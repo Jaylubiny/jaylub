@@ -14,8 +14,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"jaylub/internal/views"
 
@@ -27,6 +29,7 @@ const (
 	maxUploadBytes       = 100 << 20
 	multipartOverheadMax = 64 << 10
 	multipartMemoryLimit = 2 << 20
+	maxPlaylistNameRunes = 80
 )
 
 //go:embed web/index.html web/app.js web/styles.css web/icon.png web/icon-192.png web/icon-512.png web/manifest.webmanifest web/sw.js web/offline.html
@@ -49,6 +52,13 @@ type Song struct {
 	UploadedBy      int64  `json:"uploaded_by"`
 	CreatedAt       string `json:"created_at"`
 	IsFavorite      bool   `json:"is_favorite"`
+}
+
+type Playlist struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	SongCount int    `json:"song_count"`
+	CreatedAt string `json:"created_at"`
 }
 
 func NewHandler(store *Store, uploadDir string, profileData func(User) views.PageData) *Handler {
@@ -78,6 +88,12 @@ func NewHandler(store *Store, uploadDir string, profileData func(User) views.Pag
 	h.mux.HandleFunc("GET /api/favorites", h.listFavorites)
 	h.mux.HandleFunc("POST /api/favorites", h.addFavorite)
 	h.mux.HandleFunc("DELETE /api/favorites/{id}", h.removeFavorite)
+	h.mux.HandleFunc("GET /api/playlists", h.listPlaylists)
+	h.mux.HandleFunc("POST /api/playlists", h.createPlaylist)
+	h.mux.HandleFunc("GET /api/playlists/{id}", h.getPlaylist)
+	h.mux.HandleFunc("DELETE /api/playlists/{id}", h.deletePlaylist)
+	h.mux.HandleFunc("POST /api/playlists/{id}/songs", h.addPlaylistSong)
+	h.mux.HandleFunc("DELETE /api/playlists/{id}/songs/{songID}", h.removePlaylistSong)
 	h.mux.HandleFunc("POST /api/upload", h.uploadSong)
 	h.mux.HandleFunc("GET /api/stream", h.streamSong)
 	return h
@@ -262,6 +278,273 @@ func (h *Handler) removeFavorite(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *Handler) listPlaylists(w http.ResponseWriter, r *http.Request) {
+	user, _ := userFromRequest(r)
+	if err := h.store.ensureUser(user.ID, user.Username); err != nil {
+		writeError(w, http.StatusInternalServerError, "Could not load playlists.")
+		return
+	}
+	rows, err := h.store.db.Query(`
+		SELECT p.id, p.name, COUNT(ps.song_id), p.created_at
+		FROM playlists p
+		LEFT JOIN playlist_songs ps ON ps.playlist_id = p.id
+		WHERE p.user_id = ?
+		GROUP BY p.id
+		ORDER BY p.created_at, p.id
+	`, user.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Could not load playlists.")
+		return
+	}
+	defer rows.Close()
+	playlists := make([]Playlist, 0)
+	for rows.Next() {
+		var playlist Playlist
+		if err := rows.Scan(&playlist.ID, &playlist.Name, &playlist.SongCount, &playlist.CreatedAt); err != nil {
+			writeError(w, http.StatusInternalServerError, "Could not load playlists.")
+			return
+		}
+		playlists = append(playlists, playlist)
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "Could not load playlists.")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"playlists": playlists})
+}
+
+func (h *Handler) createPlaylist(w http.ResponseWriter, r *http.Request) {
+	if !sameOrigin(r) {
+		writeError(w, http.StatusForbidden, "Request origin is not allowed.")
+		return
+	}
+	var payload struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid playlist request.")
+		return
+	}
+	payload.Name = strings.TrimSpace(payload.Name)
+	if payload.Name == "" || utf8.RuneCountInString(payload.Name) > maxPlaylistNameRunes ||
+		strings.ContainsAny(payload.Name, "\r\n\x00") {
+		writeError(w, http.StatusBadRequest, "Playlist names must be between 1 and 80 characters.")
+		return
+	}
+	user, _ := userFromRequest(r)
+	if err := h.store.ensureUser(user.ID, user.Username); err != nil {
+		writeError(w, http.StatusInternalServerError, "Could not create playlist.")
+		return
+	}
+	result, err := h.store.db.Exec(`INSERT INTO playlists (user_id, name) VALUES (?, ?)`, user.ID, payload.Name)
+	if err != nil {
+		var exists int
+		if queryErr := h.store.db.QueryRow(
+			`SELECT EXISTS(SELECT 1 FROM playlists WHERE user_id = ? AND name = ? COLLATE NOCASE)`,
+			user.ID, payload.Name,
+		).Scan(&exists); queryErr != nil {
+			writeError(w, http.StatusInternalServerError, "Could not create playlist.")
+			return
+		}
+		if exists != 0 {
+			writeError(w, http.StatusConflict, "You already have a playlist with that name.")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "Could not create playlist.")
+		return
+	}
+	playlistID, err := result.LastInsertId()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Could not create playlist.")
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"playlist": Playlist{ID: playlistID, Name: payload.Name},
+	})
+}
+
+func (h *Handler) getPlaylist(w http.ResponseWriter, r *http.Request) {
+	user, _ := userFromRequest(r)
+	playlistID, ok := playlistIDFromRequest(w, r)
+	if !ok {
+		return
+	}
+	var playlist Playlist
+	err := h.store.db.QueryRow(`
+		SELECT p.id, p.name, COUNT(ps.song_id), p.created_at
+		FROM playlists p
+		LEFT JOIN playlist_songs ps ON ps.playlist_id = p.id
+		WHERE p.id = ? AND p.user_id = ?
+		GROUP BY p.id
+	`, playlistID, user.ID).Scan(&playlist.ID, &playlist.Name, &playlist.SongCount, &playlist.CreatedAt)
+	if err == sql.ErrNoRows {
+		writeError(w, http.StatusNotFound, "Playlist not found.")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Could not load playlist.")
+		return
+	}
+	rows, err := h.store.db.Query(`
+		SELECT s.id, s.title, s.artist, s.album, s.duration_seconds,
+			s.uploaded_by, s.created_at,
+			EXISTS(SELECT 1 FROM user_favorites f WHERE f.song_id = s.id AND f.user_id = ?)
+		FROM playlist_songs ps
+		JOIN songs s ON s.id = ps.song_id
+		WHERE ps.playlist_id = ?
+		ORDER BY ps.position, ps.created_at, s.title COLLATE NOCASE
+	`, user.ID, playlistID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Could not load playlist.")
+		return
+	}
+	defer rows.Close()
+	songs, err := scanSongs(rows)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Could not load playlist.")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"playlist": playlist, "songs": songs})
+}
+
+func (h *Handler) deletePlaylist(w http.ResponseWriter, r *http.Request) {
+	if !sameOrigin(r) {
+		writeError(w, http.StatusForbidden, "Request origin is not allowed.")
+		return
+	}
+	user, _ := userFromRequest(r)
+	playlistID, ok := playlistIDFromRequest(w, r)
+	if !ok {
+		return
+	}
+	result, err := h.store.db.Exec(`DELETE FROM playlists WHERE id = ? AND user_id = ?`, playlistID, user.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Could not delete playlist.")
+		return
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Could not delete playlist.")
+		return
+	}
+	if affected == 0 {
+		writeError(w, http.StatusNotFound, "Playlist not found.")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) addPlaylistSong(w http.ResponseWriter, r *http.Request) {
+	if !sameOrigin(r) {
+		writeError(w, http.StatusForbidden, "Request origin is not allowed.")
+		return
+	}
+	user, _ := userFromRequest(r)
+	playlistID, ok := playlistIDFromRequest(w, r)
+	if !ok {
+		return
+	}
+	var payload struct {
+		SongID string `json:"song_id"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2048)).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid playlist song request.")
+		return
+	}
+	if !validUUID(payload.SongID) {
+		writeError(w, http.StatusBadRequest, "Invalid song ID.")
+		return
+	}
+	var ownsPlaylist int
+	if err := h.store.db.QueryRow(
+		`SELECT EXISTS(SELECT 1 FROM playlists WHERE id = ? AND user_id = ?)`,
+		playlistID, user.ID,
+	).Scan(&ownsPlaylist); err != nil {
+		writeError(w, http.StatusInternalServerError, "Could not add track to playlist.")
+		return
+	}
+	if ownsPlaylist == 0 {
+		writeError(w, http.StatusNotFound, "Playlist not found.")
+		return
+	}
+	var songExists int
+	if err := h.store.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM songs WHERE id = ?)`, payload.SongID).Scan(&songExists); err != nil {
+		writeError(w, http.StatusInternalServerError, "Could not add track to playlist.")
+		return
+	}
+	if songExists == 0 {
+		writeError(w, http.StatusNotFound, "Song not found.")
+		return
+	}
+	if _, err := h.store.db.Exec(`
+		INSERT INTO playlist_songs (playlist_id, song_id, position)
+		SELECT ?, ?, COALESCE(MAX(position) + 1, 0)
+		FROM playlist_songs WHERE playlist_id = ?
+		ON CONFLICT(playlist_id, song_id) DO NOTHING
+	`, playlistID, payload.SongID, playlistID); err != nil {
+		writeError(w, http.StatusInternalServerError, "Could not add track to playlist.")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) removePlaylistSong(w http.ResponseWriter, r *http.Request) {
+	if !sameOrigin(r) {
+		writeError(w, http.StatusForbidden, "Request origin is not allowed.")
+		return
+	}
+	user, _ := userFromRequest(r)
+	playlistID, ok := playlistIDFromRequest(w, r)
+	if !ok {
+		return
+	}
+	songID := r.PathValue("songID")
+	if !validUUID(songID) {
+		writeError(w, http.StatusBadRequest, "Invalid song ID.")
+		return
+	}
+	result, err := h.store.db.Exec(`
+		DELETE FROM playlist_songs
+		WHERE playlist_id = ? AND song_id = ?
+			AND EXISTS(SELECT 1 FROM playlists WHERE id = ? AND user_id = ?)
+	`, playlistID, songID, playlistID, user.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Could not remove track from playlist.")
+		return
+	}
+	var ownsPlaylist int
+	if err := h.store.db.QueryRow(
+		`SELECT EXISTS(SELECT 1 FROM playlists WHERE id = ? AND user_id = ?)`,
+		playlistID, user.ID,
+	).Scan(&ownsPlaylist); err != nil {
+		writeError(w, http.StatusInternalServerError, "Could not remove track from playlist.")
+		return
+	}
+	if ownsPlaylist == 0 {
+		writeError(w, http.StatusNotFound, "Playlist not found.")
+		return
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Could not remove track from playlist.")
+		return
+	}
+	if affected == 0 {
+		writeError(w, http.StatusNotFound, "Track not found in playlist.")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func playlistIDFromRequest(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	playlistID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || playlistID <= 0 {
+		writeError(w, http.StatusBadRequest, "Invalid playlist ID.")
+		return 0, false
+	}
+	return playlistID, true
+}
+
 func (h *Handler) uploadSong(w http.ResponseWriter, r *http.Request) {
 	if !sameOrigin(r) {
 		writeError(w, http.StatusForbidden, "Request origin is not allowed.")
@@ -333,7 +616,7 @@ func (h *Handler) uploadSong(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Could not inspect uploaded file.")
 		return
 	}
-	metadata, err := tag.ReadFrom(tempFile)
+	metadata, _ := tag.ReadFrom(tempFile)
 	duration, err := mp3Duration(tempFile)
 	if err != nil {
 		tempFile.Close()
