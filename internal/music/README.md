@@ -103,6 +103,14 @@ installation offer it from their browser UI. On iPhone/iPad, use Safari's Share
 menu and choose **Add to Home Screen**. Offline mode provides an offline
 message page; it deliberately does not cache account pages, APIs, or audio.
 
+The player uses the browser's Media Session controls and advances to the next
+queued track when playback ends. Background audio and automatic track changes
+are still subject to the phone OS and browser's background execution policies;
+users should allow background activity for the browser/PWA and disable battery
+restrictions if playback is stopped when the screen locks. A web app cannot
+override the OS suspending it, so verify locked-screen playback on the target
+device/browser.
+
 `MockAuthMiddleware` supplies a fixed development user and can be used in
 local-only handlers/tests. It is intentionally insecure and is never mounted
 by the production server; production adapts the website's real session and

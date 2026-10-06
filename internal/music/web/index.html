@@ -3,7 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Jaylub Music is a self-hosted MP3 library for browsing, uploading, and listening to music with your Jaylub account.">
+  <meta name="description" content="Jaylub Music is a private MP3 library for signed-in Jaylub users. Browse and search the shared track collection by title, artist, album, or ID; stream audio with play, pause, previous, next, seek, and volume controls; keep playback while switching library tabs; save personal favorites; create, play, and manage private playlists; and upload up to 25 MP3 files per batch, one at a time, up to 100 MiB per file. Install it as a progressive web app. Offline access is limited to the app shell and offline notice; tracks, account pages, and APIs are not cached.">
+  <meta name="application-name" content="Jaylub Music">
+  <meta name="robots" content="noindex, nofollow, noarchive">
   <meta name="theme-color" content="#111318">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -11,21 +13,25 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Jaylub">
   <meta property="og:title" content="Jaylub Music">
-  <meta property="og:description" content="Browse, upload, and listen to MP3 music in your Jaylub library.">
+  <meta property="og:description" content="Private MP3 library for signed-in Jaylub users. Browse and search shared tracks by title, artist, album, or ID; stream and seek audio with playback controls; keep playback while switching tabs; save personal favorites; create, play, and manage private playlists; and upload up to 25 MP3 files per batch, one at a time, up to 100 MiB each. Install as a PWA; offline mode caches only the app shell, not tracks, account pages, or APIs.">
   <meta property="og:url" content="https://music.jaylub.com/">
+  <meta property="og:locale" content="en_US">
   <meta property="og:image" content="https://music.jaylub.com/icons/icon-512.png">
   <meta property="og:image:alt" content="Jaylub Music app icon">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="512">
+  <meta property="og:image:height" content="512">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="Jaylub Music">
-  <meta name="twitter:description" content="Browse, upload, and listen to MP3 music in your Jaylub library.">
+  <meta name="twitter:description" content="Private MP3 library for signed-in Jaylub users. Search shared tracks; stream and seek audio; save personal favorites; manage private playlists; upload up to 25 MP3s per batch, up to 100 MiB each. PWA offline mode caches the app shell only, not tracks or account data.">
   <meta name="twitter:image" content="https://music.jaylub.com/icons/icon-512.png">
   <link rel="canonical" href="https://music.jaylub.com/">
-  <title>Jaylub Music — Your Music Library</title>
+  <title>Jaylub Music — Private MP3 Library, Playlists &amp; Favorites</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/favicon.ico" type="image/png">
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
-  <link rel="stylesheet" href="/assets/styles.css?v=pwa-5">
-  <script src="/assets/app.js?v=pwa-5" defer></script>
+  <link rel="stylesheet" href="/assets/styles.css?v=pwa-6">
+  <script src="/assets/app.js?v=pwa-6" defer></script>
 </head>
 <body>
 {{define "content"}}
@@ -171,7 +177,7 @@
   </dialog>
 
   <footer class="player" aria-label="Audio player">
-    <audio id="audio-player" preload="metadata"></audio>
+    <audio id="audio-player" preload="auto" playsinline></audio>
     <div class="now-playing">
       <div class="record-art" aria-hidden="true">♪</div>
       <div class="track-meta">

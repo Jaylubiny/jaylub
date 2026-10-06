@@ -17,6 +17,7 @@
     globalSearch: "",
     queue: [],
     queueIndex: -1,
+    currentSong: null,
     activeTab: "global",
     toastTimer: null,
     menuOpen: !mobileNavigation.matches
@@ -274,11 +275,18 @@
   }
 
   function updateNowPlaying(song) {
+    state.currentSong = song;
     byId("now-title").textContent = song.title;
     byId("now-id").textContent = `ID: ${song.id}`;
     if ("mediaSession" in navigator && "MediaMetadata" in window) {
       navigator.mediaSession.metadata = new MediaMetadata({
-        title: song.title
+        title: song.title,
+        artist: song.artist || "Unknown Artist",
+        album: song.album || "Jaylub Music",
+        artwork: [
+          { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+          { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png" }
+        ]
       });
     }
   }
@@ -296,10 +304,14 @@
     const song = state.queue[state.queueIndex];
     if (!song) return;
     audio.src = `/api/stream?id=${encodeURIComponent(song.id)}`;
+    audio.load();
     updateNowPlaying(song);
-    audio.play().catch((error) => showToast(`Could not play this track: ${error.message}`));
-    byId("play-toggle").textContent = "❚❚";
-    byId("play-toggle").setAttribute("aria-label", "Pause");
+    audio.play().catch((error) => {
+      byId("play-toggle").textContent = "▶";
+      byId("play-toggle").setAttribute("aria-label", "Play");
+      if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "paused";
+      showToast(`Could not play this track: ${error.message}`);
+    });
   }
 
   function moveQueue(offset) {
@@ -358,7 +370,9 @@
 
   function registerMediaSession() {
     if (!("mediaSession" in navigator)) return;
-    navigator.mediaSession.setActionHandler("play", () => audio.play());
+    navigator.mediaSession.setActionHandler("play", () => {
+      audio.play().catch((error) => showToast(`Could not resume playback: ${error.message}`));
+    });
     navigator.mediaSession.setActionHandler("pause", () => audio.pause());
     navigator.mediaSession.setActionHandler("previoustrack", () => moveQueue(-1));
     navigator.mediaSession.setActionHandler("nexttrack", () => moveQueue(1));
@@ -566,6 +580,16 @@
       byId("seek-bar").value = Number.isFinite(audio.duration) && audio.duration > 0
         ? String(Math.round(audio.currentTime / audio.duration * 1000))
         : "0";
+      if ("mediaSession" in navigator &&
+          typeof navigator.mediaSession.setPositionState === "function" &&
+          Number.isFinite(audio.duration) && audio.duration > 0 &&
+          Number.isFinite(audio.currentTime)) {
+        navigator.mediaSession.setPositionState({
+          duration: audio.duration,
+          playbackRate: audio.playbackRate,
+          position: Math.min(audio.currentTime, audio.duration)
+        });
+      }
     });
     audio.addEventListener("loadedmetadata", () => { byId("total-time").textContent = formatTime(audio.duration); });
     audio.addEventListener("ended", () => moveQueue(1));

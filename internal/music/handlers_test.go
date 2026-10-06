@@ -185,11 +185,37 @@ func TestMusicHandlerSetsSecurityHeaders(t *testing.T) {
 	for header, expected := range map[string]string{
 		"X-Content-Type-Options":  "nosniff",
 		"Referrer-Policy":         "same-origin",
+		"X-Robots-Tag":            "noindex, nofollow, noarchive",
 		"Content-Security-Policy": "default-src 'self'",
 	} {
 		if got := response.Header().Get(header); !strings.HasPrefix(got, expected) {
 			t.Errorf("%s = %q, want prefix %q", header, got, expected)
 		}
+	}
+}
+
+func TestSiteAuthMiddlewareMarksUnauthenticatedResponsesNoIndex(t *testing.T) {
+	handler := SiteAuthMiddleware(
+		func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			})
+		},
+		http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+			t.Error("unauthenticated request reached music handler")
+		}),
+		func(*http.Request) (int64, string, bool) {
+			return 0, "", false
+		},
+	)
+	request := httptest.NewRequest(http.MethodGet, "https://music.jaylub.com/", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated status = %d, want 401", response.Code)
+	}
+	if got := response.Header().Get("X-Robots-Tag"); got != "noindex, nofollow, noarchive" {
+		t.Errorf("unauthenticated X-Robots-Tag = %q", got)
 	}
 }
 
@@ -252,16 +278,22 @@ func TestIndexRendersAuthenticatedAccountActions(t *testing.T) {
 		`id="playlist-create-form"`,
 		`id="playlist-song-form"`,
 		`id="global-search" type="search"`,
+		`<audio id="audio-player" preload="auto" playsinline>`,
 		`<span class="visually-hidden">Search the global library</span>`,
+		`name="robots" content="noindex, nofollow, noarchive"`,
 		`name="file" type="file" accept=".mp3,audio/mpeg" multiple required`,
 		`Select up to 25 files`,
 		`rel="manifest" href="/manifest.webmanifest"`,
-		`name="description" content="Jaylub Music is a self-hosted MP3 library`,
+		`name="description" content="Jaylub Music is a private MP3 library for signed-in Jaylub users.`,
+		`name="application-name" content="Jaylub Music"`,
 		`property="og:title" content="Jaylub Music"`,
-		`property="og:description" content="Browse, upload, and listen to MP3 music in your Jaylub library."`,
+		`property="og:description" content="Private MP3 library for signed-in Jaylub users.`,
 		`property="og:url" content="https://music.jaylub.com/"`,
 		`property="og:image" content="https://music.jaylub.com/icons/icon-512.png"`,
+		`property="og:image:type" content="image/png"`,
+		`property="og:image:width" content="512"`,
 		`name="twitter:card" content="summary"`,
+		`name="twitter:description" content="Private MP3 library for signed-in Jaylub users.`,
 		`rel="canonical" href="https://music.jaylub.com/"`,
 	} {
 		if !strings.Contains(page, expected) {
@@ -331,11 +363,12 @@ func TestFrontendAssetsServeIconAndDoNotCacheOldTrackDetails(t *testing.T) {
 				t.Errorf("manifest Content-Type = %q", got)
 			}
 			var manifest struct {
-				Name     string `json:"name"`
-				Display  string `json:"display"`
-				StartURL string `json:"start_url"`
-				Scope    string `json:"scope"`
-				Icons    []struct {
+				Name        string `json:"name"`
+				Description string `json:"description"`
+				Display     string `json:"display"`
+				StartURL    string `json:"start_url"`
+				Scope       string `json:"scope"`
+				Icons       []struct {
 					Src   string `json:"src"`
 					Sizes string `json:"sizes"`
 					Type  string `json:"type"`
@@ -344,7 +377,11 @@ func TestFrontendAssetsServeIconAndDoNotCacheOldTrackDetails(t *testing.T) {
 			if err := json.Unmarshal(response.Body.Bytes(), &manifest); err != nil {
 				t.Fatalf("decode manifest: %v", err)
 			}
-			if manifest.Name != "Jaylub Music" || manifest.Display != "standalone" ||
+			if manifest.Name != "Jaylub Music" ||
+				!strings.Contains(manifest.Description, "up to 25 MP3 files per batch") ||
+				!strings.Contains(manifest.Description, "100 MiB per file") ||
+				!strings.Contains(manifest.Description, "Offline mode caches the public app shell") ||
+				manifest.Display != "standalone" ||
 				manifest.StartURL != "/" || manifest.Scope != "/" || len(manifest.Icons) != 2 {
 				t.Errorf("manifest configuration = %+v", manifest)
 			}
@@ -363,6 +400,16 @@ func TestFrontendAssetsServeIconAndDoNotCacheOldTrackDetails(t *testing.T) {
 			}
 			if !strings.Contains(body, "[song.title, song.artist, song.album, song.id]") {
 				t.Error("global library search does not include track metadata and ID")
+			}
+			for _, behavior := range []string{
+				`audio.addEventListener("ended", () => moveQueue(1))`,
+				`navigator.mediaSession.setActionHandler("nexttrack", () => moveQueue(1))`,
+				`navigator.mediaSession.setPositionState`,
+				`artwork: [`,
+			} {
+				if !strings.Contains(body, behavior) {
+					t.Errorf("player is missing background playback behavior %q", behavior)
+				}
 			}
 		}
 	}
@@ -395,8 +442,8 @@ func TestServiceWorkerOnlyCachesPublicShellAndUsesRootScope(t *testing.T) {
 		t.Errorf("service worker Cache-Control = %q, want no-cache", got)
 	}
 	script := response.Body.String()
-	if !strings.Contains(script, "jaylub-music-shell-v5") ||
-		!strings.Contains(script, "/assets/app.js?v=pwa-5") {
+	if !strings.Contains(script, "jaylub-music-shell-v8") ||
+		!strings.Contains(script, "/assets/app.js?v=pwa-6") {
 		t.Error("service worker shell cache is not versioned to refresh stale app assets")
 	}
 	if strings.Contains(script, `"/api/`) || strings.Contains(script, `"/api/stream`) {

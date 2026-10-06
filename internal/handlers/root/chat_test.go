@@ -28,6 +28,7 @@ func TestSelfChatIsIsolatedAndLeavesGlobalMessagesUntouched(t *testing.T) {
 
 	userIDs := make(map[string]int64)
 	tokens := map[string]string{"owner": "owner-session", "other": "other-session"}
+	deviceTokens := make(map[string]*http.Cookie)
 	for username, token := range tokens {
 		result, err := service.DB().Exec(
 			`INSERT INTO users (username, password_hash) VALUES (?, ?)`,
@@ -41,9 +42,12 @@ func TestSelfChatIsIsolatedAndLeavesGlobalMessagesUntouched(t *testing.T) {
 			t.Fatalf("get user ID for %q: %v", username, err)
 		}
 		userIDs[username] = userID
-		if err := service.AcceptTerms(userID); err != nil {
-			t.Fatalf("accept terms for %q: %v", username, err)
+		termsRequest := httptest.NewRequest(http.MethodPost, "https://jaylub.com/terms", nil)
+		termsResponse := httptest.NewRecorder()
+		if err := service.AcceptTermsOnDevice(termsResponse, termsRequest); err != nil {
+			t.Fatalf("accept terms on device for %q: %v", username, err)
 		}
+		deviceTokens[token] = termsResponse.Result().Cookies()[0]
 
 		tokenHash := sha256.Sum256([]byte(token))
 		if _, err := service.DB().Exec(
@@ -69,6 +73,7 @@ func TestSelfChatIsIsolatedAndLeavesGlobalMessagesUntouched(t *testing.T) {
 	doRequest := func(method, target, body, token string, handler http.HandlerFunc) *httptest.ResponseRecorder {
 		request := httptest.NewRequest(method, target, strings.NewReader(body))
 		request.AddCookie(&http.Cookie{Name: "jaylub_session", Value: token})
+		request.AddCookie(deviceTokens[token])
 		if body != "" {
 			request.Header.Set("Content-Type", "application/json")
 		}

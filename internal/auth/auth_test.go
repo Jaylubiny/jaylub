@@ -225,6 +225,99 @@ func TestSessionCookieSecureForHTTPSAndProductionDomain(t *testing.T) {
 	}
 }
 
+func TestNewAddsDeviceTermsTableToExistingDatabase(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "existing-users.db")
+	service, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("create initial database: %v", err)
+	}
+	result, err := service.db.Exec(
+		`INSERT INTO users (username, password_hash) VALUES (?, ?)`,
+		"existing-user", "unused-hash",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.db.Exec(
+		`INSERT INTO terms_acceptances (user_id, terms_version, accepted_at) VALUES (?, ?, ?)`,
+		userID, "legacy-version", time.Now().UTC(),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.db.Exec(`DROP INDEX IF EXISTS idx_terms_device_acceptances_expires`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.db.Exec(`DROP TABLE terms_device_acceptances`); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	service, err = New(dbPath)
+	if err != nil {
+		t.Fatalf("reopen existing database: %v", err)
+	}
+	defer service.Close()
+	var tableExists, legacyRows int
+	if err := service.db.QueryRow(`
+		SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'terms_device_acceptances')
+	`).Scan(&tableExists); err != nil {
+		t.Fatal(err)
+	}
+	if tableExists != 1 {
+		t.Fatal("startup did not add terms_device_acceptances table")
+	}
+	if err := service.db.QueryRow(
+		`SELECT COUNT(*) FROM terms_acceptances WHERE user_id = ? AND terms_version = ?`,
+		userID, "legacy-version",
+	).Scan(&legacyRows); err != nil {
+		t.Fatal(err)
+	}
+	if legacyRows != 1 {
+		t.Fatalf("legacy account acceptance rows = %d, want 1", legacyRows)
+	}
+}
+
+func TestDeviceTermsAcceptanceRejectsModifiedAndExpiredTokens(t *testing.T) {
+	service, err := New(filepath.Join(t.TempDir(), "users.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+
+	modifiedRequest := httptest.NewRequest(http.MethodGet, "https://jaylub.com/", nil)
+	modifiedRequest.AddCookie(&http.Cookie{Name: termsDeviceCookie, Value: "modified-token"})
+	accepted, err := service.DeviceTermsAccepted(modifiedRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accepted {
+		t.Fatal("unregistered device token was accepted")
+	}
+
+	const expiredToken = "expired-device-token"
+	if _, err := service.db.Exec(`
+		INSERT INTO terms_device_acceptances (token_hash, terms_version, accepted_at, expires_at)
+		VALUES (?, ?, ?, ?)
+	`, hashToken(expiredToken), CurrentTermsVersion, time.Now().Add(-2*time.Hour), time.Now().Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	expiredRequest := httptest.NewRequest(http.MethodGet, "https://jaylub.com/", nil)
+	expiredRequest.AddCookie(&http.Cookie{Name: termsDeviceCookie, Value: expiredToken})
+	accepted, err = service.DeviceTermsAccepted(expiredRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accepted {
+		t.Fatal("expired device terms acceptance was accepted")
+	}
+}
+
 func TestMiddlewareAddsUserContextOnPublicHomeWhenSessionIsValid(t *testing.T) {
 	service, err := New(filepath.Join(t.TempDir(), "users.db"))
 	if err != nil {
@@ -244,8 +337,10 @@ func TestMiddlewareAddsUserContextOnPublicHomeWhenSessionIsValid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get user ID: %v", err)
 	}
-	if err := service.AcceptTerms(userID); err != nil {
-		t.Fatalf("accept terms for test user: %v", err)
+	termsRequest := httptest.NewRequest(http.MethodPost, "https://jaylub.com/terms", nil)
+	termsResponse := httptest.NewRecorder()
+	if err := service.AcceptTermsOnDevice(termsResponse, termsRequest); err != nil {
+		t.Fatalf("accept terms on test device: %v", err)
 	}
 
 	const sessionToken = "valid-test-session"
@@ -269,6 +364,7 @@ func TestMiddlewareAddsUserContextOnPublicHomeWhenSessionIsValid(t *testing.T) {
 	}))
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	request.AddCookie(&http.Cookie{Name: cookieName, Value: sessionToken})
+	request.AddCookie(termsResponse.Result().Cookies()[0])
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 
@@ -315,10 +411,21 @@ func TestMiddlewareRequiresCurrentTermsBeforeProtectedPages(t *testing.T) {
 	}
 	defer service.Close()
 
-	if _, err := service.db.Exec(
+	userResult, err := service.db.Exec(
 		`INSERT INTO users (username, password_hash) VALUES (?, ?)`,
 		"terms-user",
 		"unused-hash",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	userID, err := userResult.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.db.Exec(
+		`INSERT INTO terms_acceptances (user_id, terms_version, accepted_at) VALUES (?, ?, ?)`,
+		userID, CurrentTermsVersion, time.Now().UTC(),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -357,13 +464,28 @@ func TestMiddlewareRequiresCurrentTermsBeforeProtectedPages(t *testing.T) {
 		t.Fatalf("terms page status = %d, want %d", termsResponse.Code, http.StatusOK)
 	}
 
-	if err := service.AcceptTerms(1); err != nil {
+	termsCookieResponse := httptest.NewRecorder()
+	termsRequestForAcceptance := httptest.NewRequest(http.MethodPost, "https://jaylub.com/terms", nil)
+	if err := service.AcceptTermsOnDevice(termsCookieResponse, termsRequestForAcceptance); err != nil {
 		t.Fatal(err)
 	}
+	deviceCookie := termsCookieResponse.Result().Cookies()[0]
+	acceptedBrowserRequest := httptest.NewRequest(http.MethodGet, "https://jaylub.com/chat", nil)
+	acceptedBrowserRequest.AddCookie(&http.Cookie{Name: cookieName, Value: token})
+	acceptedBrowserRequest.AddCookie(deviceCookie)
 	acceptedResponse := httptest.NewRecorder()
-	handler.ServeHTTP(acceptedResponse, protectedRequest)
+	handler.ServeHTTP(acceptedResponse, acceptedBrowserRequest)
 	if acceptedResponse.Code != http.StatusOK {
 		t.Fatalf("accepted protected status = %d, want %d", acceptedResponse.Code, http.StatusOK)
+	}
+	otherBrowserRequest := httptest.NewRequest(http.MethodGet, "https://jaylub.com/chat", nil)
+	otherBrowserRequest.AddCookie(&http.Cookie{Name: cookieName, Value: token})
+	otherBrowserResponse := httptest.NewRecorder()
+	handler.ServeHTTP(otherBrowserResponse, otherBrowserRequest)
+	if otherBrowserResponse.Code != http.StatusSeeOther ||
+		otherBrowserResponse.Header().Get("Location") != "/terms" {
+		t.Fatalf("other browser response = (%d, %q), want redirect to /terms",
+			otherBrowserResponse.Code, otherBrowserResponse.Header().Get("Location"))
 	}
 }
 

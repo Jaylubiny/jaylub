@@ -65,19 +65,33 @@ func TestTermsHandlerRequiresExplicitAcceptance(t *testing.T) {
 			if response.Code != test.wantStatus {
 				t.Fatalf("status = %d, want %d", response.Code, test.wantStatus)
 			}
+			if test.name == "checkbox missing" && len(response.Result().Cookies()) != 0 {
+				t.Fatal("terms cookie was issued without explicit acceptance")
+			}
+			if test.name == "accepted" {
+				cookies := response.Result().Cookies()
+				if len(cookies) != 1 || cookies[0].Name != "jaylub_terms_device" ||
+					!cookies[0].HttpOnly || !cookies[0].Secure ||
+					cookies[0].SameSite != http.SameSiteLaxMode ||
+					cookies[0].Path != "/" || cookies[0].Domain != "jaylub.com" ||
+					cookies[0].MaxAge < 364*24*60*60 {
+					t.Fatalf("device terms cookie attributes = %+v", cookies)
+				}
+				checkRequest := httptest.NewRequest(http.MethodGet, "https://jaylub.com/chat", nil)
+				checkRequest.AddCookie(cookies[0])
+				accepted, err := service.DeviceTermsAccepted(checkRequest)
+				if err != nil || !accepted {
+					t.Fatalf("accepted device cookie validation = (%v, %v)", accepted, err)
+				}
+			}
 		})
 	}
-
-	var userID int64
-	if err := service.DB().QueryRow(`SELECT id FROM users WHERE username = ?`, "terms-user").Scan(&userID); err != nil {
+	var accountAcceptances int
+	if err := service.DB().QueryRow(`SELECT COUNT(*) FROM terms_acceptances`).Scan(&accountAcceptances); err != nil {
 		t.Fatal(err)
 	}
-	accepted, err := service.TermsAccepted(userID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !accepted {
-		t.Fatal("accepted terms were not saved")
+	if accountAcceptances != 0 {
+		t.Errorf("device acceptance unexpectedly recorded %d account-wide acceptance rows", accountAcceptances)
 	}
 }
 
@@ -103,6 +117,12 @@ func TestTermsTemplateRendersAgreementAndRequiredCheckbox(t *testing.T) {
 	for _, expected := range []string{
 		"<h1>TERMS AND CONDITIONS</h1>",
 		"Keep the website and its content private",
+		"Cookies and device-level terms acceptance",
+		"jaylub_session",
+		"jaylub_terms_device",
+		"up to 30 days",
+		"expires after one year",
+		"This identifies a browser, not a physical device.",
 		"Version " + auth.CurrentTermsVersion,
 		`name="accept_terms" value="yes" required`,
 		"Accept and continue",

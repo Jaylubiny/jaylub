@@ -23,8 +23,10 @@ import (
 
 const (
 	cookieName          = "jaylub_session"
+	termsDeviceCookie   = "jaylub_terms_device"
 	sessionDuration     = 30 * 24 * time.Hour
-	CurrentTermsVersion = "2026-09-30"
+	termsDeviceDuration = 365 * 24 * time.Hour
+	CurrentTermsVersion = "2026-10-06-device"
 )
 
 type contextKey string
@@ -177,6 +179,15 @@ func (s *Service) initSchema() error {
 			PRIMARY KEY (user_id, terms_version),
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		);
+
+		CREATE TABLE IF NOT EXISTS terms_device_acceptances (
+			token_hash TEXT PRIMARY KEY,
+			terms_version TEXT NOT NULL,
+			accepted_at DATETIME NOT NULL,
+			expires_at DATETIME NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_terms_device_acceptances_expires
+			ON terms_device_acceptances(expires_at);
 
 		CREATE TABLE IF NOT EXISTS chat_messages (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -433,24 +444,43 @@ func (s *Service) Logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, expired)
 }
 
-func (s *Service) TermsAccepted(userID int64) (bool, error) {
+func (s *Service) DeviceTermsAccepted(r *http.Request) (bool, error) {
+	cookie, err := r.Cookie(termsDeviceCookie)
+	if err != nil || cookie.Value == "" {
+		return false, nil
+	}
 	var accepted bool
-	err := s.db.QueryRow(`
+	err = s.db.QueryRow(`
 		SELECT EXISTS (
-			SELECT 1 FROM terms_acceptances
-			WHERE user_id = ? AND terms_version = ?
+			SELECT 1 FROM terms_device_acceptances
+			WHERE token_hash = ? AND terms_version = ? AND julianday(expires_at) > julianday(?)
 		)
-	`, userID, CurrentTermsVersion).Scan(&accepted)
+	`, hashToken(cookie.Value), CurrentTermsVersion, time.Now().UTC()).Scan(&accepted)
 	return accepted, err
 }
 
-func (s *Service) AcceptTerms(userID int64) error {
-	_, err := s.db.Exec(`
-		INSERT INTO terms_acceptances (user_id, terms_version, accepted_at)
-		VALUES (?, ?, ?)
-		ON CONFLICT(user_id, terms_version) DO NOTHING
-	`, userID, CurrentTermsVersion, time.Now().UTC())
-	return err
+func (s *Service) AcceptTermsOnDevice(w http.ResponseWriter, r *http.Request) error {
+	token, err := randomToken()
+	if err != nil {
+		return fmt.Errorf("create terms acceptance token: %w", err)
+	}
+	now := time.Now().UTC()
+	expiresAt := now.Add(termsDeviceDuration)
+	if _, err := s.db.Exec(
+		`DELETE FROM terms_device_acceptances WHERE julianday(expires_at) <= julianday(?) OR terms_version <> ?`,
+		now, CurrentTermsVersion,
+	); err != nil {
+		return fmt.Errorf("remove expired device terms acceptances: %w", err)
+	}
+	_, err = s.db.Exec(`
+		INSERT INTO terms_device_acceptances (token_hash, terms_version, accepted_at, expires_at)
+		VALUES (?, ?, ?, ?)
+	`, hashToken(token), CurrentTermsVersion, now, expiresAt)
+	if err != nil {
+		return fmt.Errorf("save device terms acceptance: %w", err)
+	}
+	http.SetCookie(w, s.deviceTermsCookie(r, token, expiresAt))
+	return nil
 }
 
 func (s *Service) Middleware(next http.Handler) http.Handler {
@@ -480,7 +510,7 @@ func (s *Service) Middleware(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), userContextKey, user)
 		request := r.WithContext(ctx)
 		if r.URL.Path != "/terms" && r.URL.Path != "/logout" {
-			accepted, err := s.TermsAccepted(user.ID)
+			accepted, err := s.DeviceTermsAccepted(r)
 			if err != nil {
 				http.Error(w, "Could not verify terms acceptance.", http.StatusInternalServerError)
 				return
@@ -501,8 +531,8 @@ func (s *Service) LoginPage() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			if user, ok := s.AuthenticatedUser(r); ok {
-				accepted, err := s.TermsAccepted(user.ID)
+			if _, ok := s.AuthenticatedUser(r); ok {
+				accepted, err := s.DeviceTermsAccepted(r)
 				if err != nil {
 					http.Error(w, "Could not verify terms acceptance.", http.StatusInternalServerError)
 					return
@@ -535,12 +565,7 @@ func (s *Service) LoginPage() http.HandlerFunc {
 				return
 			}
 
-			user, _, err := s.userWithPasswordHash(username)
-			if err != nil {
-				http.Error(w, "Could not verify the signed-in account.", http.StatusInternalServerError)
-				return
-			}
-			accepted, err := s.TermsAccepted(user.ID)
+			accepted, err := s.DeviceTermsAccepted(r)
 			if err != nil {
 				http.Error(w, "Could not verify terms acceptance.", http.StatusInternalServerError)
 				return
@@ -633,6 +658,20 @@ func (s *Service) sessionCookie(r *http.Request, value string, expires time.Time
 		Path:     "/",
 		Domain:   cookieDomain(r.Host),
 		Expires:  expires,
+		HttpOnly: true,
+		Secure:   r.TLS != nil || cookieDomain(r.Host) != "",
+		SameSite: http.SameSiteLaxMode,
+	}
+}
+
+func (s *Service) deviceTermsCookie(r *http.Request, value string, expires time.Time) *http.Cookie {
+	return &http.Cookie{
+		Name:     termsDeviceCookie,
+		Value:    value,
+		Path:     "/",
+		Domain:   cookieDomain(r.Host),
+		Expires:  expires,
+		MaxAge:   int(termsDeviceDuration.Seconds()),
 		HttpOnly: true,
 		Secure:   r.TLS != nil || cookieDomain(r.Host) != "",
 		SameSite: http.SameSiteLaxMode,

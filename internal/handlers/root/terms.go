@@ -7,7 +7,7 @@ import (
 
 func Terms(authService *auth.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		user, ok := auth.UserFromContext(r.Context())
+		_, ok := auth.UserFromContext(r.Context())
 		if !ok {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
@@ -25,7 +25,7 @@ func Terms(authService *auth.Service) http.HandlerFunc {
 				http.Error(w, "You must accept the terms to continue.", http.StatusBadRequest)
 				return
 			}
-			if err := authService.AcceptTerms(user.ID); err != nil {
+			if err := authService.AcceptTermsOnDevice(w, r); err != nil {
 				http.Error(w, "Could not save terms acceptance.", http.StatusInternalServerError)
 				return
 			}

@@ -2,10 +2,11 @@
   "id": "/",
   "name": "Jaylub Music",
   "short_name": "Music",
-  "description": "Browse, upload, and listen to MP3 music in your Jaylub library.",
+  "description": "Private MP3 library for signed-in Jaylub users. Browse and search the shared track collection by title, artist, album, or ID; stream audio with playback and seek controls; keep playback while switching tabs; save personal favorites; create, play, and manage private playlists; and upload up to 25 MP3 files per batch, one at a time, up to 100 MiB per file. Install as a progressive web app. Offline mode caches the public app shell and offline notice only, never tracks, account pages, or APIs.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
+  "categories": ["music", "entertainment"],
   "background_color": "#050505",
   "theme_color": "#111318",
   "icons": [

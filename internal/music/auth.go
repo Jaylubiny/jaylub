@@ -64,6 +64,7 @@ func SiteAuthMiddleware(siteMiddleware func(http.Handler) http.Handler, next htt
 		next.ServeHTTP(w, r.WithContext(withUser(r.Context(), User{ID: userID, Username: username})))
 	}))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Robots-Tag", "noindex, nofollow, noarchive")
 		if isAssetPath(r.URL.Path) || r.URL.Path == "/login" || r.URL.Path == "/terms" {
 			next.ServeHTTP(w, r)
 			return

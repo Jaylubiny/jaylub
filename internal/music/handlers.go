@@ -102,6 +102,7 @@ func NewHandler(store *Store, uploadDir string, profileData func(User) views.Pag
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "same-origin")
+	w.Header().Set("X-Robots-Tag", "noindex, nofollow, noarchive")
 	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self'; connect-src 'self'; form-action 'self' https://jaylub.com; base-uri 'none'; frame-ancestors 'none'; object-src 'none'")
 	h.mux.ServeHTTP(w, r)
 }
