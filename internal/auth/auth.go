@@ -445,18 +445,25 @@ func (s *Service) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) DeviceTermsAccepted(r *http.Request) (bool, error) {
-	cookie, err := r.Cookie(termsDeviceCookie)
-	if err != nil || cookie.Value == "" {
-		return false, nil
-	}
-	var accepted bool
-	err = s.db.QueryRow(`
+	for _, cookie := range r.Cookies() {
+		if cookie.Name != termsDeviceCookie || cookie.Value == "" {
+			continue
+		}
+		var accepted bool
+		err := s.db.QueryRow(`
 		SELECT EXISTS (
 			SELECT 1 FROM terms_device_acceptances
 			WHERE token_hash = ? AND terms_version = ? AND julianday(expires_at) > julianday(?)
 		)
-	`, hashToken(cookie.Value), CurrentTermsVersion, time.Now().UTC()).Scan(&accepted)
-	return accepted, err
+		`, hashToken(cookie.Value), CurrentTermsVersion, time.Now().UTC()).Scan(&accepted)
+		if err != nil {
+			return false, err
+		}
+		if accepted {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (s *Service) AcceptTermsOnDevice(w http.ResponseWriter, r *http.Request) error {
@@ -659,28 +666,30 @@ func (s *Service) userWithPasswordHash(username string) (User, string, error) {
 }
 
 func (s *Service) sessionCookie(r *http.Request, value string, expires time.Time) *http.Cookie {
+	domain := cookieDomainForRequest(r)
 	return &http.Cookie{
 		Name:     cookieName,
 		Value:    value,
 		Path:     "/",
-		Domain:   cookieDomain(r.Host),
+		Domain:   domain,
 		Expires:  expires,
 		HttpOnly: true,
-		Secure:   r.TLS != nil || cookieDomain(r.Host) != "",
+		Secure:   r.TLS != nil || domain != "",
 		SameSite: http.SameSiteLaxMode,
 	}
 }
 
 func (s *Service) deviceTermsCookie(r *http.Request, value string, expires time.Time) *http.Cookie {
+	domain := cookieDomainForRequest(r)
 	return &http.Cookie{
 		Name:     termsDeviceCookie,
 		Value:    value,
 		Path:     "/",
-		Domain:   cookieDomain(r.Host),
+		Domain:   domain,
 		Expires:  expires,
 		MaxAge:   int(termsDeviceDuration.Seconds()),
 		HttpOnly: true,
-		Secure:   r.TLS != nil || cookieDomain(r.Host) != "",
+		Secure:   r.TLS != nil || domain != "",
 		SameSite: http.SameSiteLaxMode,
 	}
 }
@@ -699,13 +708,40 @@ func hashToken(token string) string {
 }
 
 func cookieDomain(host string) string {
+	host = strings.TrimSpace(host)
+	if strings.Contains(host, "://") {
+		parsedURL, err := url.Parse(host)
+		if err != nil {
+			return ""
+		}
+		host = parsedURL.Hostname()
+	}
 	hostWithoutPort, _, err := net.SplitHostPort(host)
 	if err == nil {
 		host = hostWithoutPort
 	}
-	host = strings.ToLower(host)
+	host = strings.TrimPrefix(strings.ToLower(host), ".")
 	if host == "jaylub.com" || strings.HasSuffix(host, ".jaylub.com") {
 		return ".jaylub.com"
+	}
+	return ""
+}
+
+func cookieDomainForRequest(r *http.Request) string {
+	if domain := cookieDomain(r.Host); domain != "" {
+		return domain
+	}
+	forwardedHost := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Host"), ",")[0])
+	if domain := cookieDomain(forwardedHost); domain != "" {
+		return domain
+	}
+	for _, configuredDomain := range []string{
+		os.Getenv("SESSION_COOKIE_DOMAIN"),
+		os.Getenv("MY_DOMAIN"),
+	} {
+		if domain := cookieDomain(configuredDomain); domain != "" {
+			return domain
+		}
 	}
 	return ""
 }

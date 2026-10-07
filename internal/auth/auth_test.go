@@ -241,6 +241,56 @@ func TestSessionCookieUsesSharedDomainForEmailSubdomain(t *testing.T) {
 	}
 }
 
+func TestSessionCookieUsesForwardedPublicHostBehindReverseProxy(t *testing.T) {
+	service := &Service{}
+	request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:9010/login", nil)
+	request.Host = "127.0.0.1:9010"
+	request.Header.Set("X-Forwarded-Host", "email.jaylub.com")
+
+	cookie := service.sessionCookie(request, "session-token", time.Now().Add(time.Hour))
+	if cookie.Domain != ".jaylub.com" || !cookie.Secure {
+		t.Fatalf("session cookie behind reverse proxy = %+v, want shared secure cookie", cookie)
+	}
+}
+
+func TestSessionCookieUsesConfiguredDomainWhenProxyRewritesHost(t *testing.T) {
+	t.Setenv("SESSION_COOKIE_DOMAIN", ".jaylub.com")
+	service := &Service{}
+	request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8080/login", nil)
+	request.Host = "127.0.0.1:8080"
+
+	cookie := service.sessionCookie(request, "session-token", time.Now().Add(time.Hour))
+	if cookie.Domain != ".jaylub.com" || !cookie.Secure {
+		t.Fatalf("session cookie with rewritten proxy host = %+v, want shared secure cookie", cookie)
+	}
+}
+
+func TestDeviceTermsAcceptedSkipsStaleDuplicateCookie(t *testing.T) {
+	service, err := New(filepath.Join(t.TempDir(), "users.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+
+	request := httptest.NewRequest(http.MethodPost, "https://jaylub.com/terms", nil)
+	response := httptest.NewRecorder()
+	if err := service.AcceptTermsOnDevice(response, request); err != nil {
+		t.Fatal(err)
+	}
+	acceptedCookie := response.Result().Cookies()[0]
+
+	checkRequest := httptest.NewRequest(http.MethodGet, "https://email.jaylub.com/", nil)
+	checkRequest.AddCookie(&http.Cookie{Name: termsDeviceCookie, Value: "stale-host-only-acceptance"})
+	checkRequest.AddCookie(acceptedCookie)
+	accepted, err := service.DeviceTermsAccepted(checkRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !accepted {
+		t.Fatal("valid terms acceptance was ignored after a stale duplicate cookie")
+	}
+}
+
 func TestNewAddsDeviceTermsTableToExistingDatabase(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "existing-users.db")
 	service, err := New(dbPath)

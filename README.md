@@ -79,6 +79,11 @@ incoming-mail delivery. The incoming webhook accepts `POST
 `internal/database/emails.db`; mailbox-state columns are added without
 replacing existing email rows.
 
+For reverse-proxy deployments, set `SESSION_COOKIE_DOMAIN=.jaylub.com` so the
+login and device-terms cookies are shared by the main site and email subdomain.
+The application also recognizes the `X-Forwarded-Host` header and falls back
+to `MY_DOMAIN` when the proxy rewrites the request host.
+
 ## RUNNING UNDER SYSTEMD
 
 `./run.sh` builds the server and runs it in the foreground so systemd can track
