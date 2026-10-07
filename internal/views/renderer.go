@@ -1,11 +1,13 @@
 package views
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"jaylub/internal/auth"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -104,6 +106,7 @@ func (r *Renderer) RenderWithSEO(w http.ResponseWriter, req *http.Request, name 
 		filepath.Join(r.templateDir, name+".html"),
 	)
 	if err != nil {
+		log.Printf("parse page template %q: %v", name, err)
 		http.Error(w, "Template Error", http.StatusInternalServerError)
 		return
 	}
@@ -121,8 +124,14 @@ func (r *Renderer) RenderWithSEO(w http.ResponseWriter, req *http.Request, name 
 		data = r.withProfileData(data, user)
 	}
 
-	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
+	var output bytes.Buffer
+	if err := tmpl.ExecuteTemplate(&output, "layout.html", data); err != nil {
+		log.Printf("render page template %q: %v", name, err)
 		http.Error(w, "Template Error", http.StatusInternalServerError)
+		return
+	}
+	if _, err := w.Write(output.Bytes()); err != nil {
+		log.Printf("write rendered page %q: %v", name, err)
 	}
 }
 

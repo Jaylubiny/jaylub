@@ -1,13 +1,17 @@
 package views
 
 import (
+	"bytes"
 	"encoding/json"
 	"html/template"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	"jaylub/internal/auth"
 )
 
 func TestPopulateSEO(t *testing.T) {
@@ -94,6 +98,9 @@ func TestHomepageTemplateRendersMetadataAndStructuredData(t *testing.T) {
 		`<meta property="og:url" content="https://jaylub.com/">`,
 		`<meta name="robots" content="index, follow">`,
 		`<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication"`,
+		`href="https://email.jaylub.com" class="card link-card">`,
+		"<h2>Email</h2>",
+		"Open your Jaylub mailbox to read and send email.",
 	} {
 		if !strings.Contains(html, fragment) {
 			t.Errorf("rendered homepage is missing %q", fragment)
@@ -110,5 +117,43 @@ func TestPopulateSEOLeavesUnconfiguredPagesUnindexable(t *testing.T) {
 	}
 	if data.Indexable || data.StructuredData != "" {
 		t.Fatalf("unconfigured page received indexable SEO metadata: %#v", data)
+	}
+}
+
+func TestPageTemplatesRenderWithAuthenticatedProfileData(t *testing.T) {
+	_, sourceFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("could not locate test source")
+	}
+	templateDir := filepath.Join(filepath.Dir(sourceFile), "..", "..", "web", "templates")
+	entries, err := os.ReadDir(templateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := PageData{
+		Title:        "test",
+		Username:     "test-user",
+		Initials:     "T",
+		TermsVersion: auth.CurrentTermsVersion,
+		Stats:        ProfileStats{BestRunTime: "0:00"},
+		ChatSettings: auth.DefaultChatSettings(),
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".html") || entry.Name() == "login.html" || entry.Name() == "layout.html" {
+			continue
+		}
+		t.Run(entry.Name(), func(t *testing.T) {
+			tmpl, err := template.ParseFiles(
+				filepath.Join(templateDir, "layout.html"),
+				filepath.Join(templateDir, entry.Name()),
+			)
+			if err != nil {
+				t.Fatalf("parse templates: %v", err)
+			}
+			var output bytes.Buffer
+			if err := tmpl.ExecuteTemplate(&output, "layout.html", data); err != nil {
+				t.Fatalf("execute templates: %v", err)
+			}
+		})
 	}
 }

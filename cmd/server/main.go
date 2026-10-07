@@ -13,6 +13,7 @@ import (
 
 	"jaylub/internal/auth"
 	"jaylub/internal/bot"
+	"jaylub/internal/email"
 	"jaylub/internal/music"
 	router "jaylub/internal/routers"
 	"jaylub/internal/views"
@@ -33,11 +34,24 @@ func run() error {
 		return err
 	}
 	defer authService.Close()
+
 	musicStore, err := music.OpenStore("internal/database/music.db")
 	if err != nil {
 		return err
 	}
 	defer musicStore.Close()
+
+	// Initialize Email Service
+	resendKey := os.Getenv("RESEND_API_KEY")
+	domain := os.Getenv("MY_DOMAIN")
+	secret := os.Getenv("WEBHOOK_SECRET")
+
+	emailService, err := email.New("internal/database/emails.db", resendKey, domain, secret)
+	if err != nil {
+		return fmt.Errorf("failed to initialize email service: %w", err)
+	}
+	defer emailService.Close()
+
 	profileRenderer := views.NewRenderer("web/templates")
 	profileRenderer.SetDB(authService.DB())
 
@@ -50,12 +64,13 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize Discord bot: %w", err)
 	}
-
 	defer discordBot.Stop()
 
+	
 	servers := []*http.Server{
 		newHTTPServer(":8080", router.Basic(authService)),
 		newHTTPServer(":8090", router.Company(authService)),
+		newHTTPServer(":9010", router.Email(emailService, authService)), // Dedicated Email Server
 		newMusicHTTPServer(music.SiteAuthMiddleware(
 			authService.Middleware,
 			music.NewHandler(musicStore, "./data/mp3s", func(user music.User) views.PageData {
@@ -70,6 +85,7 @@ func run() error {
 			},
 		)),
 	}
+
 	errCh := make(chan error, len(servers)+1)
 
 	for _, srv := range servers {

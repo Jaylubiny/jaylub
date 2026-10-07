@@ -2,6 +2,7 @@ package router
 
 import (
 	"jaylub/internal/auth"
+	"jaylub/internal/email"
 	"jaylub/internal/handlers/root"
 	"net/http"
 )
@@ -11,10 +12,12 @@ type route struct {
 	handler http.HandlerFunc
 }
 
+// Router for main site (:8080)
 func Basic(authService *auth.Service) http.Handler {
 	handlers.UseStatsDB(authService.DB())
 	chatService := handlers.NewChatService(authService.DB())
 	jayliveService := handlers.NewJayliveService(authService.DB())
+
 	routes := []route{
 		{"/", handlers.Home},
 		{"/about", handlers.About},
@@ -60,6 +63,36 @@ func Basic(authService *auth.Service) http.Handler {
 		{"/chat/files/", chatService.File},
 	}
 	return newMux(routes, authService)
+}
+
+// Dedicated Router for email.jaylub.com (:9010)
+func Email(emailService *email.Service, authService *auth.Service) http.Handler {
+	handlers.UseStatsDB(authService.DB())
+	emailHandler := handlers.NewEmailHandler(emailService)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/login", authService.LoginPage())
+	mux.HandleFunc("/logout", authService.LogoutHandler())
+	mux.HandleFunc("/{$}", handlers.EmailPage(authService.DB()))
+	mux.HandleFunc("/about", handlers.About)
+	mux.HandleFunc("/me", handlers.Me)
+	mux.HandleFunc("/settings", handlers.Settings(authService))
+	mux.HandleFunc("/terms", handlers.Terms(authService))
+	mux.HandleFunc("/contacts", handlers.Contacts)
+	mux.HandleFunc("/docs", handlers.Docs)
+	mux.HandleFunc("/documentation", handlers.Docs)
+	mux.HandleFunc("/api/emails", emailHandler.GetEmails)
+	mux.HandleFunc("/api/send", emailHandler.SendEmail)
+	mux.HandleFunc("/api/emails/read", emailHandler.MarkRead)
+	mux.HandleFunc("/api/emails/trash", emailHandler.MoveToTrash)
+	mux.HandleFunc("/api/emails/restore", emailHandler.Restore)
+	mux.HandleFunc("/api/emails/delete", emailHandler.DeleteFromTrash)
+
+	mountStaticFiles(mux)
+	publicMux := http.NewServeMux()
+	publicMux.HandleFunc("/api/webhooks/incoming", emailHandler.HandleWebhook)
+	publicMux.Handle("/", authService.Middleware(mux))
+	return publicMux
 }
 
 func newMux(routes []route, authService *auth.Service) http.Handler {

@@ -13,6 +13,7 @@ require (
 require (
 	github.com/gorilla/schema v1.4.1 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
+	github.com/resend/resend-go/v2 v2.28.0 // indirect
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/time v0.10.0 // indirect
 )

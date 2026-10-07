@@ -60,8 +60,24 @@ WORKING ON ^
 /chat/files/<attachment-id>
 /static/<file>
 /web/static/<file>
+/api/emails
+/api/send
 
 DONE ^
+
+## WEBMAIL
+
+The authenticated webmail application is served by the dedicated listener on
+port `9010` (normally published as `email.jaylub.com`). Each account's mailbox
+address is `<username>@jaylub.com`. Inbox, Sent, and Trash are scoped to the
+signed-in account; trashed messages can be restored or permanently deleted.
+
+Configure `RESEND_API_KEY` to enable outgoing mail and `WEBHOOK_SECRET` for
+incoming-mail delivery. The incoming webhook accepts `POST
+/api/webhooks/incoming` with an `X-Secret-Auth` header and JSON fields `from`,
+`to`, `subject`, and `text`. Mailbox data is stored in
+`internal/database/emails.db`; mailbox-state columns are added without
+replacing existing email rows.
 
 ## RUNNING UNDER SYSTEMD
 

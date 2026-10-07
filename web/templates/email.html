@@ -1,0 +1,136 @@
+{{define "head"}}
+<link rel="stylesheet" href="/web/static/css/email.css?v=9">
+<script src="/web/static/js/email.js?v=4" defer></script>
+{{end}}
+
+{{define "content"}}
+<section class="email-app" data-mailbox="{{.Username}}@jaylub.com">
+    <header class="email-header">
+        <div class="email-brand">
+            <span class="email-brand-mark" aria-hidden="true">J</span>
+            <div>
+                <p class="email-eyebrow">YOUR WORKSPACE</p>
+                <h1>Mail</h1>
+            </div>
+        </div>
+        <label class="email-search">
+            <span class="visually-hidden">Search email</span>
+            <svg class="email-search-icon" aria-hidden="true" viewBox="0 0 24 24">
+                <circle cx="10.8" cy="10.8" r="6.8"></circle>
+                <path d="m16 16 4.2 4.2"></path>
+            </svg>
+            <input id="email-search" type="search" placeholder="Search mail" autocomplete="off">
+        </label>
+        <div class="email-account">
+            <span class="email-account-label">Your Jaylub address</span>
+            <strong><span class="email-account-status" aria-hidden="true"></span>{{.Username}}@jaylub.com</strong>
+        </div>
+    </header>
+
+    <div class="email-workspace">
+        <aside class="email-sidebar" aria-label="Mail folders">
+            <button class="email-compose-button" id="open-compose" type="button">
+                <svg aria-hidden="true" viewBox="0 0 24 24">
+                    <path d="M12 5v14M5 12h14"></path>
+                </svg>
+                <span>Compose</span>
+            </button>
+            <nav class="email-folders">
+                <button class="email-folder is-active" type="button" data-folder="inbox" aria-current="page">
+                    <svg aria-hidden="true" viewBox="0 0 24 24">
+                        <rect x="3.5" y="4.5" width="17" height="15" rx="2.5"></rect>
+                        <path d="M3.5 13h4l1.6 2h5.8l1.6-2h4"></path>
+                    </svg><span>Inbox</span>
+                </button>
+                <button class="email-folder" type="button" data-folder="sent">
+                    <svg aria-hidden="true" viewBox="0 0 24 24">
+                        <path d="M20.5 3.5 11 13M20.5 3.5l-6 17-3.5-7.5-7.5-3.5 17-6Z"></path>
+                    </svg><span>Sent</span>
+                </button>
+                <button class="email-folder" type="button" data-folder="trash">
+                    <svg aria-hidden="true" viewBox="0 0 24 24">
+                        <path d="M4 7h16M9 7V4.5h6V7m3 0-.8 13H6.8L6 7m4 4v5m4-5v5"></path>
+                    </svg><span>Trash</span>
+                </button>
+            </nav>
+            <p class="email-sidebar-note">Signed in as <strong>{{.Username}}</strong></p>
+        </aside>
+
+        <section class="email-list-panel" aria-label="Email list">
+            <div class="email-list-heading">
+                <div>
+                    <p class="email-eyebrow">Mailbox</p>
+                    <h2 id="folder-title">Inbox</h2>
+                </div>
+                <button class="email-refresh" id="refresh-email" type="button" aria-label="Refresh mailbox" title="Refresh">
+                    <svg aria-hidden="true" viewBox="0 0 24 24">
+                        <path d="M20 7v5h-5M4.8 9a7.5 7.5 0 0 1 12.6-2L20 12M4 17v-5h5m10.2 3a7.5 7.5 0 0 1-12.6 2L4 12"></path>
+                    </svg>
+                </button>
+            </div>
+            <div id="email-list" class="email-list" role="list" aria-live="polite">
+                <p class="email-state">Loading your mail…</p>
+            </div>
+        </section>
+
+        <section class="email-reader-panel" aria-label="Message reading pane">
+            <div class="email-reader-empty" id="reader-empty">
+                <span class="email-empty-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                        <rect x="3" y="5" width="18" height="14" rx="3"></rect>
+                        <path d="m4 7 8 6 8-6"></path>
+                    </svg>
+                </span>
+                <h2>Select a message</h2>
+                <p>Choose an email to read it here.</p>
+            </div>
+            <article class="email-reader" id="email-reader" hidden>
+                <div class="email-reader-toolbar">
+                    <button class="email-back-button" id="back-to-messages" type="button">
+                        <svg aria-hidden="true" viewBox="0 0 24 24">
+                            <path d="m14.5 5-7 7 7 7M8 12h12"></path>
+                        </svg>
+                        <span>Back to messages</span>
+                    </button>
+                    <div id="message-actions" class="email-message-actions"></div>
+                </div>
+                <h2 id="message-subject"></h2>
+                <dl class="email-headers">
+                    <div><dt>From</dt><dd id="message-from"></dd></div>
+                    <div><dt>To</dt><dd id="message-to"></dd></div>
+                    <div><dt>Date</dt><dd id="message-date"></dd></div>
+                </dl>
+                <div class="email-message-body" id="message-body"></div>
+            </article>
+        </section>
+    </div>
+
+    <p class="email-notice" id="email-notice" role="status" aria-live="polite"></p>
+
+    <dialog class="email-compose-modal" id="compose-modal" aria-labelledby="compose-title">
+        <form id="compose-form" class="email-compose-form">
+            <header class="email-compose-header">
+                <h2 id="compose-title">New message</h2>
+                <button class="email-icon-button" id="close-compose" type="button" aria-label="Close compose">
+                    <svg aria-hidden="true" viewBox="0 0 24 24">
+                        <path d="m6 6 12 12M18 6 6 18"></path>
+                    </svg>
+                </button>
+            </header>
+            <label>To
+                <input name="to" type="email" maxlength="320" autocomplete="email" required>
+            </label>
+            <label>Subject
+                <input name="subject" type="text" maxlength="998" required>
+            </label>
+            <label>Message
+                <textarea name="body" rows="10" maxlength="1000000" required></textarea>
+            </label>
+            <footer class="email-compose-footer">
+                <p id="compose-error" class="email-compose-error" role="alert"></p>
+                <button class="email-compose-button" type="submit">Send</button>
+            </footer>
+        </form>
+    </dialog>
+</section>
+{{end}}

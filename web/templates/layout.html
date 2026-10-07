@@ -30,7 +30,8 @@
 
 <div id="cursor"></div>
 
-<nav>
+<nav class="{{if eq .Title "email"}}email-nav{{end}}">
+  {{if ne .Title "email"}}
   <div class="nav-links">
     <a href="/">Home</a>
     <a href="/about">About</a>
@@ -38,6 +39,7 @@
     <a href="/contacts">Contacts</a>
     <a href="/documentation">Documentation</a>
   </div>
+  {{end}}
 
   {{if .Username}}
   <div class="user-menu" data-user-menu>
@@ -47,6 +49,7 @@
     </button>
     <div class="user-dropdown" data-user-dropdown hidden>
       <a class="profile-settings-link" href="/settings">Settings</a>
+      <a class="profile-settings-link" href="/me">Stats</a>
       <div class="profile-stats" aria-label="Profile stats">
         <div class="profile-stat">
           <span>Messages</span>
@@ -81,7 +84,7 @@
   {{end}}
 </nav>
 
-<main>
+<main class="{{if eq .Title "email"}}email-page{{end}}">
   <div class="container">
     {{template "content" .}}
   </div>
