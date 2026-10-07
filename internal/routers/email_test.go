@@ -38,6 +38,12 @@ func TestEmailWebhookIsPublicOnlyWithSecret(t *testing.T) {
 	defer emailService.Close()
 	handler := Email(emailService, authService)
 
+	emailLoginPageResponse := httptest.NewRecorder()
+	handler.ServeHTTP(emailLoginPageResponse, httptest.NewRequest(http.MethodGet, "https://email.jaylub.com/login", nil))
+	if emailLoginPageResponse.Code != http.StatusOK || !strings.Contains(emailLoginPageResponse.Body.String(), `<form class="login-form"`) {
+		t.Fatalf("email listener login page returned %d", emailLoginPageResponse.Code)
+	}
+
 	request := httptest.NewRequest(http.MethodPost, "/api/webhooks/incoming", strings.NewReader(
 		`{"from":"sender@example.com","to":"alice@jaylub.com","subject":"Hello","text":"Body"}`,
 	))
