@@ -236,6 +236,9 @@ func TestSessionCookieUsesSharedDomainForEmailSubdomain(t *testing.T) {
 	if !cookie.Secure {
 		t.Fatal("session cookie for the email subdomain must be secure")
 	}
+	if cookie.Name != "jaylub_session_v2" {
+		t.Fatalf("session cookie name = %q, want versioned cookie name", cookie.Name)
+	}
 }
 
 func TestNewAddsDeviceTermsTableToExistingDatabase(t *testing.T) {

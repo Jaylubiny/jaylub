@@ -89,7 +89,7 @@ func TestEmailWebhookIsPublicOnlyWithSecret(t *testing.T) {
 	if len(termsCookies) == 0 {
 		t.Fatal("terms acceptance did not issue a device cookie")
 	}
-	loginRequest := httptest.NewRequest(http.MethodPost, "http://email.jaylub.com/login", nil)
+	loginRequest := httptest.NewRequest(http.MethodPost, "https://jaylub.com/login", nil)
 	loginResponse := httptest.NewRecorder()
 	if err := authService.Login(loginResponse, loginRequest, "preclik", "test-password"); err != nil {
 		t.Fatal(err)
@@ -98,8 +98,12 @@ func TestEmailWebhookIsPublicOnlyWithSecret(t *testing.T) {
 	if len(cookies) == 0 {
 		t.Fatal("login did not issue a session cookie")
 	}
+	if cookies[0].Name != "jaylub_session_v2" || cookies[0].Domain != "jaylub.com" || !cookies[0].Secure {
+		t.Fatalf("main-site login issued an invalid cross-subdomain cookie: %+v", cookies[0])
+	}
 
-	request = httptest.NewRequest(http.MethodGet, "/api/emails", nil)
+	request = httptest.NewRequest(http.MethodGet, "https://email.jaylub.com/api/emails", nil)
+	request.AddCookie(&http.Cookie{Name: "jaylub_session", Value: "stale-host-only-session"})
 	request.AddCookie(cookies[0])
 	request.AddCookie(termsCookies[0])
 	response = httptest.NewRecorder()
@@ -115,7 +119,8 @@ func TestEmailWebhookIsPublicOnlyWithSecret(t *testing.T) {
 		t.Fatalf("authenticated mailbox returned another user's email: %#v", mailbox)
 	}
 
-	request = httptest.NewRequest(http.MethodGet, "http://email.jaylub.com/", nil)
+	request = httptest.NewRequest(http.MethodGet, "https://email.jaylub.com/", nil)
+	request.AddCookie(&http.Cookie{Name: "jaylub_session", Value: "stale-host-only-session"})
 	request.AddCookie(cookies[0])
 	request.AddCookie(termsCookies[0])
 	response = httptest.NewRecorder()

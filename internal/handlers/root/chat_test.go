@@ -72,7 +72,7 @@ func TestSelfChatIsIsolatedAndLeavesGlobalMessagesUntouched(t *testing.T) {
 
 	doRequest := func(method, target, body, token string, handler http.HandlerFunc) *httptest.ResponseRecorder {
 		request := httptest.NewRequest(method, target, strings.NewReader(body))
-		request.AddCookie(&http.Cookie{Name: "jaylub_session", Value: token})
+		request.AddCookie(&http.Cookie{Name: "jaylub_session_v2", Value: token})
 		request.AddCookie(deviceTokens[token])
 		if body != "" {
 			request.Header.Set("Content-Type", "application/json")

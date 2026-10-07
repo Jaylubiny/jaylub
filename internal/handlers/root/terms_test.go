@@ -118,7 +118,7 @@ func TestTermsTemplateRendersAgreementAndRequiredCheckbox(t *testing.T) {
 		"<h1>TERMS AND CONDITIONS</h1>",
 		"Keep the website and its content private",
 		"Cookies and device-level terms acceptance",
-		"jaylub_session",
+		"jaylub_session_v2",
 		"jaylub_terms_device",
 		"up to 30 days",
 		"expires after one year",

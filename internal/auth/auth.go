@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	cookieName          = "jaylub_session"
+	cookieName          = "jaylub_session_v2"
 	termsDeviceCookie   = "jaylub_terms_device"
 	sessionDuration     = 30 * 24 * time.Hour
 	termsDeviceDuration = 365 * 24 * time.Hour
