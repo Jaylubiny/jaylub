@@ -26,7 +26,6 @@ func TestEmailTemplateRendersSharedLayoutAndMailboxAddress(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"href=\"/me\">Stats</a>",
 		"alice@jaylub.com",
 		"email-list",
 		"email-reader",
@@ -34,6 +33,9 @@ func TestEmailTemplateRendersSharedLayoutAndMailboxAddress(t *testing.T) {
 	} {
 		if !strings.Contains(output.String(), want) {
 			t.Errorf("rendered email page does not include %q", want)
+		}
+		if strings.Contains(output.String(), ">Stats</a>") {
+			t.Error("profile dropdown should not include a Stats link")
 		}
 	}
 	for _, unwanted := range []string{

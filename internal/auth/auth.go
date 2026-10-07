@@ -609,28 +609,35 @@ func (s *Service) LogoutHandler() http.HandlerFunc {
 }
 
 func (s *Service) AuthenticatedUser(r *http.Request) (User, bool) {
-	cookie, err := r.Cookie(cookieName)
-	if err != nil || cookie.Value == "" {
-		return User{}, false
+	for _, cookie := range r.Cookies() {
+		if cookie.Name != cookieName || cookie.Value == "" {
+			continue
+		}
+
+		var user User
+		var expiresAt time.Time
+		tokenHash := hashToken(cookie.Value)
+		err := s.db.QueryRow(`
+			SELECT users.id, users.username, sessions.expires_at
+			FROM sessions
+			JOIN users ON users.id = sessions.user_id
+			WHERE sessions.token_hash = ?
+		`, tokenHash).Scan(&user.ID, &user.Username, &expiresAt)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return User{}, false
+		}
+		if time.Now().After(expiresAt) {
+			_, _ = s.db.Exec(`DELETE FROM sessions WHERE token_hash = ?`, tokenHash)
+			continue
+		}
+
+		return user, true
 	}
 
-	var user User
-	var expiresAt time.Time
-	err = s.db.QueryRow(`
-		SELECT users.id, users.username, sessions.expires_at
-		FROM sessions
-		JOIN users ON users.id = sessions.user_id
-		WHERE sessions.token_hash = ?
-	`, hashToken(cookie.Value)).Scan(&user.ID, &user.Username, &expiresAt)
-	if err != nil {
-		return User{}, false
-	}
-	if time.Now().After(expiresAt) {
-		_, _ = s.db.Exec(`DELETE FROM sessions WHERE token_hash = ?`, hashToken(cookie.Value))
-		return User{}, false
-	}
-
-	return user, true
+	return User{}, false
 }
 
 func UserFromContext(ctx context.Context) (User, bool) {

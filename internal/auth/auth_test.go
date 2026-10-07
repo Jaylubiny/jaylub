@@ -225,6 +225,19 @@ func TestSessionCookieSecureForHTTPSAndProductionDomain(t *testing.T) {
 	}
 }
 
+func TestSessionCookieUsesSharedDomainForEmailSubdomain(t *testing.T) {
+	service := &Service{}
+	request := httptest.NewRequest(http.MethodPost, "https://email.jaylub.com/login", nil)
+
+	cookie := service.sessionCookie(request, "session-token", time.Now().Add(time.Hour))
+	if cookie.Domain != ".jaylub.com" {
+		t.Fatalf("session cookie domain = %q, want .jaylub.com", cookie.Domain)
+	}
+	if !cookie.Secure {
+		t.Fatal("session cookie for the email subdomain must be secure")
+	}
+}
+
 func TestNewAddsDeviceTermsTableToExistingDatabase(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "existing-users.db")
 	service, err := New(dbPath)
@@ -318,7 +331,7 @@ func TestDeviceTermsAcceptanceRejectsModifiedAndExpiredTokens(t *testing.T) {
 	}
 }
 
-func TestMiddlewareAddsUserContextOnPublicHomeWhenSessionIsValid(t *testing.T) {
+func TestMiddlewareUsesValidSessionWhenDuplicateCookiePrecedesIt(t *testing.T) {
 	service, err := New(filepath.Join(t.TempDir(), "users.db"))
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -362,14 +375,15 @@ func TestMiddlewareAddsUserContextOnPublicHomeWhenSessionIsValid(t *testing.T) {
 		}
 		_, _ = w.Write([]byte(user.Username))
 	}))
-	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request := httptest.NewRequest(http.MethodGet, "https://email.jaylub.com/", nil)
+	request.AddCookie(&http.Cookie{Name: cookieName, Value: "stale-session"})
 	request.AddCookie(&http.Cookie{Name: cookieName, Value: sessionToken})
 	request.AddCookie(termsResponse.Result().Cookies()[0])
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK || response.Body.String() != "homepage-user" {
-		t.Fatalf("homepage response = (%d, %q), want authenticated user context", response.Code, response.Body.String())
+		t.Fatalf("email response = (%d, %q), want authenticated user context", response.Code, response.Body.String())
 	}
 }
 
