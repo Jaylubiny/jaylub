@@ -1,9 +1,9 @@
 "use strict";
 
-const CACHE_NAME = "jaylub-music-shell-v8";
+const CACHE_NAME = "jaylub-music-shell-v9";
 const SHELL_ASSETS = [
-  "/assets/app.js?v=pwa-6",
-  "/assets/styles.css?v=pwa-6",
+  "/assets/app.js?v=pwa-7",
+  "/assets/styles.css?v=pwa-7",
   "/favicon.ico",
   "/icons/icon-192.png",
   "/icons/icon-512.png",

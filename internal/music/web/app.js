@@ -18,6 +18,9 @@
     queue: [],
     queueIndex: -1,
     currentSong: null,
+    playbackGeneration: 0,
+    endedGeneration: -1,
+    failedGeneration: -1,
     activeTab: "global",
     toastTimer: null,
     menuOpen: !mobileNavigation.matches
@@ -303,10 +306,15 @@
   function playCurrent() {
     const song = state.queue[state.queueIndex];
     if (!song) return;
+    state.playbackGeneration++;
+    state.endedGeneration = -1;
+    state.failedGeneration = -1;
     audio.src = `/api/stream?id=${encodeURIComponent(song.id)}`;
     audio.load();
     updateNowPlaying(song);
+    const generation = state.playbackGeneration;
     audio.play().catch((error) => {
+      if (generation !== state.playbackGeneration) return;
       byId("play-toggle").textContent = "▶";
       byId("play-toggle").setAttribute("aria-label", "Play");
       if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "paused";
@@ -320,6 +328,26 @@
     if (nextIndex < 0 || nextIndex >= state.queue.length) return;
     state.queueIndex = nextIndex;
     playCurrent();
+  }
+
+  function advanceEndedTrack() {
+    if (!audio.ended || state.endedGeneration === state.playbackGeneration) return;
+    state.endedGeneration = state.playbackGeneration;
+    moveQueue(1);
+  }
+
+  function handleTrackError() {
+    if (state.failedGeneration === state.playbackGeneration) return;
+    state.failedGeneration = state.playbackGeneration;
+    const failedSong = state.queue[state.queueIndex];
+    if (failedSong && state.queueIndex + 1 < state.queue.length) {
+      showToast(`Could not load "${failedSong.title}". Skipping to the next track.`);
+      moveQueue(1);
+      return;
+    }
+    showToast(failedSong
+      ? `Could not load "${failedSong.title}".`
+      : "This track could not be loaded.");
   }
 
   function setMenuOpen(open) {
@@ -383,7 +411,7 @@
 
   function bindEvents() {
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" })
+      navigator.serviceWorker.register("/sw.js?v=music-recovery-1", { scope: "/", updateViaCache: "none" })
         .then((registration) => registration.update())
         .catch((error) => console.error("Could not register music offline app:", error));
     }
@@ -592,8 +620,12 @@
       }
     });
     audio.addEventListener("loadedmetadata", () => { byId("total-time").textContent = formatTime(audio.duration); });
-    audio.addEventListener("ended", () => moveQueue(1));
-    audio.addEventListener("error", () => showToast("This track could not be loaded."));
+    audio.addEventListener("ended", advanceEndedTrack);
+    audio.addEventListener("error", handleTrackError);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") advanceEndedTrack();
+    });
+    window.addEventListener("pageshow", advanceEndedTrack);
     registerMediaSession();
   }
 

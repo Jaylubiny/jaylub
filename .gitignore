@@ -20,6 +20,14 @@ node_modules/
 __pycache__/
 *.pyc
 
+# Tests are not required to run the application.
+*_test.go
+*_test.py
+test_*.py
+*.test.*
+*.spec.*
+/tests/
+
 # Session files
 sessions/
 instance/
@@ -30,4 +38,3 @@ instance/
 
 # Binaries
 admin
-

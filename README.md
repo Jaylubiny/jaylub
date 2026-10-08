@@ -84,6 +84,26 @@ login and device-terms cookies are shared by the main site and email subdomain.
 The application also recognizes the `X-Forwarded-Host` header and falls back
 to `MY_DOMAIN` when the proxy rewrites the request host.
 
+## CLEARING THE MUSIC LIBRARY
+
+To clear all song rows from `internal/database/music.db` and remove MP3s from
+`data/mp3s/` on the hosting machine, first stop the Jaylub service and run the
+cleanup utility from the project checkout:
+
+```sh
+python3 tools/clear_music_library.py
+python3 tools/clear_music_library.py --apply
+```
+
+The first command is a read-only preview. The second requires typing the
+explicit confirmation phrase. It creates a timestamped archive under `data/`
+with a consistent SQLite backup and moves MP3 files there rather than
+permanently deleting them. Keep the archive until the cleared library has been
+verified. Only MP3 files directly inside `data/mp3s/` are moved; other files
+and subdirectories are left untouched. The script deletes song rows, allowing
+SQLite foreign-key cascades to remove song favorites and playlist-track
+references, while leaving accounts and playlists intact.
+
 ## RUNNING UNDER SYSTEMD
 
 `./run.sh` builds the server and runs it in the foreground so systemd can track
