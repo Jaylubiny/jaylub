@@ -77,7 +77,9 @@ incoming-mail delivery. The incoming webhook accepts `POST
 /api/webhooks/incoming` with an `X-Secret-Auth` header and JSON fields `from`,
 `to`, `subject`, and `text`. Mailbox data is stored in
 `internal/database/emails.db`; mailbox-state columns are added without
-replacing existing email rows.
+replacing existing email rows. Messages in all folders (Inbox, Sent, and Trash)
+are permanently deleted once their stored timestamp is more than 29 days old.
+Expired messages are purged at startup and checked again every 24 hours.
 
 For reverse-proxy deployments, set `SESSION_COOKIE_DOMAIN=.jaylub.com` so the
 login and device-terms cookies are shared by the main site and email subdomain.

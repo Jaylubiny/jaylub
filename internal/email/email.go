@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/mail"
 	"os"
@@ -69,6 +70,14 @@ func New(dbPath, resendAPIKey, _ string, webhookSecret string) (*Service, error)
 		_ = db.Close()
 		return nil, err
 	}
+	deleted, err := service.PurgeExpiredEmails()
+	if err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("purge expired email during startup: %w", err)
+	}
+	if deleted > 0 {
+		log.Printf("email retention cleanup permanently deleted %d expired messages during startup", deleted)
+	}
 	return service, nil
 }
 
@@ -117,9 +126,25 @@ func (s *Service) initSchema() error {
 
 	_, err := s.db.Exec(`
 		CREATE INDEX IF NOT EXISTS idx_emails_recipient_folder ON emails(recipient, folder, timestamp DESC);
-		CREATE INDEX IF NOT EXISTS idx_emails_sender_folder ON emails(sender, folder, timestamp DESC)
+		CREATE INDEX IF NOT EXISTS idx_emails_sender_folder ON emails(sender, folder, timestamp DESC);
+		CREATE INDEX IF NOT EXISTS idx_emails_timestamp ON emails(timestamp)
 	`)
 	return err
+}
+
+func (s *Service) PurgeExpiredEmails() (int64, error) {
+	result, err := s.db.Exec(`
+		DELETE FROM emails
+		WHERE timestamp < datetime('now', '-29 days')
+	`)
+	if err != nil {
+		return 0, fmt.Errorf("delete emails older than 29 days: %w", err)
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("count deleted expired emails: %w", err)
+	}
+	return deleted, nil
 }
 
 func (s *Service) addColumnIfMissing(name, definition string) error {

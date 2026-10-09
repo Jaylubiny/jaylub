@@ -15,18 +15,21 @@ func UseStatsDB(db *sql.DB) {
 
 var (
 	Home = renderer.PageWithSEO("home", views.SEOData{
-		Title:               "Jaylub | Projects, Community, and Experiments",
-		Description:         "Explore the Jaylub platform: project pages, a community chat, the Jaylive arena survival game, documentation, and Discord bots.",
+		Title:               "Jaylubiny | Optimization and Task Automation",
+		Description:         "Jaylubiny focuses on optimizing workflows and automating tasks for other people. Jaylub, a fictional stinky character, is the website's mascot. Jaylubiny does not own the Twitch channel named Jaylub. The site also provides email, community chat, documentation, and project tools.",
 		CanonicalURL:        "https://jaylub.com/",
 		OpenGraphType:       "website",
-		ApplicationName:     "Jaylub",
+		ApplicationName:     "Jaylubiny",
 		ApplicationCategory: "WebApplication",
 		Features: []string{
-			"Jaylive 2D arena survival game",
-			"Authenticated community chat with file attachments",
-			"Project pages and wiki",
-			"Technical documentation",
-			"Discord bots and community integrations",
+			"Workflow optimization",
+			"Task automation for other people",
+			"Jaylubiny website and project tools",
+			"Jaylub email service for reading and sending email",
+			"Authenticated community chat",
+			"Technical documentation and wiki",
+			"Jaylub, a fictional stinky character mascot",
+			"Jaylubiny is not affiliated with or the owner of the Twitch channel named Jaylub",
 		},
 	})
 	About       = renderer.Page("about")

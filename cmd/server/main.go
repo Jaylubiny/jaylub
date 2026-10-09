@@ -51,6 +51,31 @@ func run() error {
 		return fmt.Errorf("failed to initialize email service: %w", err)
 	}
 	defer emailService.Close()
+	retentionCleanupDone := make(chan struct{})
+	go func() {
+		defer close(retentionCleanupDone)
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				deleted, err := emailService.PurgeExpiredEmails()
+				if err != nil {
+					log.Printf("email retention cleanup failed: %v", err)
+					continue
+				}
+				if deleted > 0 {
+					log.Printf("email retention cleanup permanently deleted %d expired messages", deleted)
+				}
+			}
+		}
+	}()
+	defer func() {
+		stop()
+		<-retentionCleanupDone
+	}()
 
 	profileRenderer := views.NewRenderer("web/templates")
 	profileRenderer.SetDB(authService.DB())
