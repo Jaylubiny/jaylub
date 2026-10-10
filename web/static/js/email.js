@@ -57,18 +57,19 @@
 
     const actions = document.querySelector("#message-actions");
     actions.replaceChildren();
-    if (state.folder === "trash") {
-      actions.append(
-        actionButton("Restore", async () => mutate("/api/emails/restore", { id: email.id })),
-        actionButton("Delete permanently", async () => {
-          if (window.confirm("Permanently delete this email?")) {
-            await mutate("/api/emails/delete", { id: email.id });
-          }
-        }, true),
-      );
-    } else {
-      actions.append(actionButton("Move to Trash", async () => mutate("/api/emails/trash", { id: email.id }), true));
-    }
+    actions.append(actionButton("Reply", () => replyTo(email)));
+  }
+
+  function replyTo(email) {
+    const isOwnMessage = email.sender.toLowerCase() === mailbox;
+    const recipient = isOwnMessage ? email.recipient : email.sender;
+    const subject = email.subject.trim();
+    composeForm.elements.to.value = recipient;
+    composeForm.elements.subject.value = /^re:/i.test(subject) ? subject : `Re: ${subject}`;
+    composeForm.elements.body.value = `\n\nOn ${dateText(email.timestamp)}, ${email.sender} wrote:\n> ${email.body.replace(/\r\n?/g, "\n").split("\n").join("\n> ")}`;
+    composeError.textContent = "";
+    composeModal.showModal();
+    composeForm.elements.body.focus();
   }
 
   function actionButton(label, callback, danger = false) {

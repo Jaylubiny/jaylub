@@ -15,6 +15,7 @@ node_modules/
 *.db-shm
 *.db-wal
 /data/mp3s/
+/web/static/email-preview.html
 
 # Python
 __pycache__/
