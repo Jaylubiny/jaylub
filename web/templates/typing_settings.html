@@ -1,0 +1,28 @@
+{{define "head"}}
+<link rel="stylesheet" href="/web/static/css/typing.css?v=5">
+<script src="/web/static/js/typing-settings.js?v=1" defer></script>
+{{end}}
+
+{{define "content"}}
+<section class="typing-page">
+    <header>
+        <h1>Typing test settings</h1>
+        <p>Adjust the text size used in the typing passage. This setting is saved in this browser.</p>
+    </header>
+
+    <section class="card typing-settings" data-typing-settings>
+        <div class="typing-settings-control">
+            <label for="typing-text-size">Typing text size</label>
+            <input id="typing-text-size" type="range" min="1" max="25" step="1" value="18"
+                data-text-size aria-describedby="typing-text-size-value">
+            <output class="typing-settings-value" id="typing-text-size-value" for="typing-text-size"
+                data-text-size-value>18 px</output>
+        </div>
+        <div class="typing-settings-actions">
+            <a class="action-button" href="/typing">Back to typing test</a>
+            <button type="button" class="action-button secondary" data-reset-size>Reset to default</button>
+        </div>
+        <p data-settings-status role="status" aria-live="polite">Changes are saved automatically.</p>
+    </section>
+</section>
+{{end}}

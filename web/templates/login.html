@@ -14,11 +14,19 @@
   <link rel="icon" href="/web/static/img/icon.png" type="image/png">
   <link rel="stylesheet" href="/web/static/css/layout.css?v=profile-stats-1" />
   <link rel="stylesheet" href="/web/static/css/login.css?v=purple-login-1" />
-  <script src="/web/static/js/layout.js?v=purple-light-1" defer></script>
+  <link rel="stylesheet" href="/web/static/css/components.css?v=purple-1" />
+  <link rel="stylesheet" href="/web/static/css/theme.css?v=purple-me-1" />
+  <link rel="stylesheet" href="/web/static/css/atelier.css?v=6" />
+  <script src="/web/static/js/layout.js?v=purple-light-2" defer></script>
+  <script src="/web/static/js/atelier.js?v=1" defer></script>
   <script src="/web/static/js/login.js" defer></script>
 </head>
 <body class="login-page">
   <div id="cursor"></div>
+  <canvas class="ambient-canvas" data-ambient-canvas aria-hidden="true"></canvas>
+  <button class="sound-toggle" type="button" data-sound-toggle aria-pressed="false"
+      aria-label="Mute interface sounds" title="Mute interface sounds">Sound on</button>
+  <a class="profile-button profile-login" href="/" aria-label="Return to Jaylub home">Jaylub</a>
 
   <main class="login-shell">
     <section class="login-panel" aria-labelledby="login-title">

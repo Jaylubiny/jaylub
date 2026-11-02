@@ -507,9 +507,19 @@ func (s *Service) Middleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		if r.URL.Path == "/api/typing/leaderboard" {
+			next.ServeHTTP(w, r)
+			return
+		}
 
 		user, ok := s.AuthenticatedUser(r)
 		if !ok {
+			if strings.HasPrefix(r.URL.Path, "/api/typing/") {
+				w.Header().Set("Content-Type", "application/json; charset=utf-8")
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte("{\"error\":\"Authentication required.\"}\n"))
+				return
+			}
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}

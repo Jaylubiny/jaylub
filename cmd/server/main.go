@@ -85,15 +85,19 @@ func run() error {
 		return errors.New("DISCORD_BOT_TOKEN environment variable is missing")
 	}
 
+	basicRouter, err := router.Basic(authService)
+	if err != nil {
+		return fmt.Errorf("initialize main router: %w", err)
+	}
+
 	discordBot, err := bot.NewBot(token)
 	if err != nil {
 		return fmt.Errorf("failed to initialize Discord bot: %w", err)
 	}
 	defer discordBot.Stop()
 
-	
 	servers := []*http.Server{
-		newHTTPServer(":8080", router.Basic(authService)),
+		newHTTPServer(":8080", basicRouter),
 		newHTTPServer(":8090", router.Company(authService)),
 		newHTTPServer(":9010", router.Email(emailService, authService)), // Dedicated Email Server
 		newMusicHTTPServer(music.SiteAuthMiddleware(

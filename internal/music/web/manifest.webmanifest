@@ -8,7 +8,7 @@
   "display": "standalone",
   "categories": ["music", "entertainment"],
   "background_color": "#050505",
-  "theme_color": "#111318",
+  "theme_color": "#050505",
   "icons": [
     {
       "src": "/icons/icon-192.png",

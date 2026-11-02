@@ -19,27 +19,32 @@
   <link rel="icon" href="/web/static/img/icon.png" type="image/png">
   <link rel="stylesheet" href="/web/static/css/layout.css?v=settings-link-2" />
   <link rel="stylesheet" href="/web/static/css/components.css?v=purple-1" />
-  <script src="/web/static/js/layout.js?v=purple-light-1" defer></script>
+  <script src="/web/static/js/layout.js?v=purple-light-2" defer></script>
   {{block "head" .}}{{end}}
   {{if ne .Title "jaylive"}}
   <link rel="stylesheet" href="/web/static/css/theme.css?v=purple-me-1" />
   {{end}}
+  <link rel="stylesheet" href="/web/static/css/atelier.css?v=6" />
+  <script src="/web/static/js/atelier.js?v=1" defer></script>
 </head>
 
 <body>
 
 <div id="cursor"></div>
+<canvas class="ambient-canvas" data-ambient-canvas aria-hidden="true"></canvas>
 
 <nav class="{{if eq .Title "email"}}email-nav{{end}}">
   {{if ne .Title "email"}}
   <div class="nav-links">
     <a href="/">Home</a>
     <a href="/about">About</a>
-    <a href="/me">Me</a>
+    <a href="/me">About Me</a>
     <a href="/contacts">Contacts</a>
     <a href="/documentation">Documentation</a>
   </div>
   {{end}}
+  <button class="sound-toggle" type="button" data-sound-toggle aria-pressed="false"
+      aria-label="Mute interface sounds" title="Mute interface sounds">Sound on</button>
 
   {{if .Username}}
   <div class="user-menu" data-user-menu>
@@ -80,6 +85,8 @@
       </form>
     </div>
   </div>
+  {{else}}
+  <a class="profile-button profile-login" href="/login">Sign in</a>
   {{end}}
 </nav>
 

@@ -1,0 +1,349 @@
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  position: relative;
+  isolation: isolate;
+  overflow-x: hidden;
+  transition: opacity 180ms ease;
+}
+
+body::before {
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  opacity: 0.12;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.92' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.32'/%3E%3C/svg%3E");
+}
+
+.ambient-canvas {
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0.52;
+}
+
+body > nav,
+body > main,
+body > .footer,
+body > #cursor {
+  position: relative;
+  z-index: 1;
+}
+
+body > nav {
+  z-index: 1100;
+  min-height: 72px;
+  padding-right: 150px;
+  background: var(--theme-bg-2) !important;
+  backdrop-filter: blur(16px) saturate(125%);
+}
+
+body > nav .nav-links {
+  gap: clamp(12px, 2.2vw, 28px);
+}
+
+body > nav .sound-toggle {
+  min-height: 36px;
+  margin-left: auto;
+  padding: 7px 12px;
+  color: var(--theme-muted);
+  background: var(--theme-surface-2);
+  border: 1px solid var(--theme-border);
+  border-radius: 999px;
+  box-shadow: none !important;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+  background: var(--theme-surface-2) !important;
+  border-color: var(--theme-border) !important;
+}
+
+body > .sound-toggle {
+  position: fixed;
+  z-index: 1100;
+  top: 16px;
+  left: 18px;
+  min-height: 36px;
+  padding: 7px 12px;
+  color: var(--theme-muted);
+  background: var(--theme-surface-2);
+  border: 1px solid var(--theme-border);
+  border-radius: 999px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+body.login-page > button.sound-toggle {
+  color: var(--theme-muted) !important;
+  background: var(--theme-surface-2) !important;
+  border: 1px solid var(--theme-border) !important;
+  box-shadow: none !important;
+}
+
+body > nav .sound-toggle:hover,
+body > nav .sound-toggle:focus-visible {
+  color: var(--theme-text) !important;
+  border-color: var(--theme-border-strong) !important;
+  background: color-mix(in srgb, var(--theme-purple) 16%, transparent) !important;
+}
+
+body > nav button.sound-toggle[data-sound-toggle] {
+  color: var(--theme-muted) !important;
+  background: var(--theme-surface-2) !important;
+  border: 1px solid var(--theme-border) !important;
+  box-shadow: none !important;
+}
+
+body > nav button.sound-toggle[data-sound-toggle]:hover,
+body > nav button.sound-toggle[data-sound-toggle]:focus-visible {
+  color: var(--theme-text) !important;
+  background: color-mix(in srgb, var(--theme-purple) 16%, transparent) !important;
+  border-color: var(--theme-border-strong) !important;
+}
+
+body > nav .user-menu,
+body > nav .profile-login {
+  position: fixed;
+  z-index: 1100;
+  top: 14px;
+  right: 18px;
+}
+
+body > nav .profile-button {
+  min-height: 44px;
+  padding: 5px 14px 5px 5px;
+  background: var(--theme-surface-2);
+  border-color: var(--theme-border-strong);
+  box-shadow: var(--theme-shadow);
+  backdrop-filter: blur(14px);
+}
+
+body > nav .profile-avatar {
+  background: linear-gradient(140deg, var(--theme-purple-2), var(--theme-purple));
+  box-shadow: inset 0 1px color-mix(in srgb, var(--theme-text) 28%, transparent);
+}
+
+body > nav .profile-login {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 16px;
+  color: var(--theme-text);
+  text-decoration: none;
+}
+
+body > .profile-login {
+  position: fixed;
+  z-index: 1100;
+  top: 14px;
+  right: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 16px;
+  color: var(--theme-text);
+  background: var(--theme-surface-2);
+  border: 1px solid var(--theme-border-strong);
+  border-radius: 999px;
+  box-shadow: var(--theme-shadow);
+  text-decoration: none;
+  backdrop-filter: blur(14px);
+}
+
+body > main:not(.login-shell) {
+  backdrop-filter: blur(3px);
+}
+
+@media (max-width: 640px) {
+  body > main:not(.login-shell) {
+    width: calc(100% - 24px);
+    min-width: 0;
+  }
+}
+
+body > main h1,
+body > main h2,
+body > main .logo,
+body > main .section-title {
+  font-family: "Thunderman", "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive;
+  font-weight: 700;
+  text-shadow: 0 2px 22px var(--theme-glow);
+}
+
+body > main .card,
+body > main .feature-card,
+body > main .about,
+body > main .section-panel,
+body > main .contact-card,
+body > main .contribution-card,
+body > main .about-block,
+body > main .about-text,
+body > main .about-me,
+body > main .skill,
+body > main .activity-panel,
+body > main .project-section,
+body > main .warning-box,
+body > main .wiki-hero,
+body > main .wiki-box,
+body > main .doc-card,
+body > main .info-card,
+body > main .service-card,
+body > main .bot-card,
+body > main .topbar,
+body > main .chat-shell,
+body > main .typing-settings,
+body > main .terms-card,
+body > main .login-panel,
+body > main .email-app,
+body > main .pixel-card,
+body > main .note-card {
+  position: relative;
+  overflow: visible;
+  isolation: isolate;
+  transform: none;
+  transition:
+    transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 220ms ease,
+    border-color 220ms ease,
+    background-color 220ms ease;
+}
+
+body > main:not(.login-shell)::after,
+body > main .card::after,
+body > main .feature-card::after,
+body > main .about::after,
+body > main .section-panel::after,
+body > main .contact-card::after,
+body > main .contribution-card::after,
+body > main .about-block::after,
+body > main .about-text::after,
+body > main .about-me::after,
+body > main .skill::after,
+body > main .activity-panel::after,
+body > main .project-section::after,
+body > main .warning-box::after,
+body > main .wiki-hero::after,
+body > main .wiki-box::after,
+body > main .doc-card::after,
+body > main .info-card::after,
+body > main .service-card::after,
+body > main .bot-card::after,
+body > main .topbar::after,
+body > main .chat-shell::after,
+body > main .typing-settings::after,
+body > main .terms-card::after,
+body > main .login-panel::after,
+body > main .email-app::after,
+body > main .pixel-card::after,
+body > main .note-card::after {
+  position: absolute;
+  z-index: 3;
+  top: -7px;
+  right: clamp(16px, 8%, 44px);
+  width: 58px;
+  height: 17px;
+  pointer-events: none;
+  content: "";
+  border: 1px solid color-mix(in srgb, var(--theme-text) 16%, transparent);
+  border-radius: 2px 3px 2px 4px;
+  background:
+    repeating-linear-gradient(165deg, transparent 0 5px, color-mix(in srgb, var(--theme-text) 8%, transparent) 6px, transparent 7px 11px),
+    linear-gradient(105deg, color-mix(in srgb, var(--theme-text) 14%, transparent), color-mix(in srgb, var(--theme-purple) 26%, transparent) 42%, color-mix(in srgb, var(--theme-text) 20%, transparent));
+  box-shadow: var(--theme-shadow);
+  transform: rotate(-4deg);
+}
+
+body > main .cards > :nth-child(4n + 1) {
+  transform: rotate(-0.45deg);
+}
+
+body > main .cards > :nth-child(4n + 3) {
+  transform: rotate(0.4deg);
+}
+
+body > main a.card,
+body > main a.link-card,
+body > main a.feature-card {
+  text-decoration: none;
+}
+
+body > main .cards > :hover,
+body > main .cards > :focus-visible,
+body > main .feature-card:hover,
+body > main .section-panel:hover,
+body > main .contact-card:hover,
+body > main .contribution-card:hover,
+body > main .about-block:hover,
+body > main .about-text:hover,
+body > main .about-me:hover,
+body > main .skill:hover,
+body > main .activity-panel:hover,
+body > main .project-section:hover,
+body > main .warning-box:hover,
+body > main .wiki-box:hover {
+  z-index: 4;
+  transform: translateY(-4px) rotate(0deg);
+  box-shadow: var(--theme-shadow-hover) !important;
+}
+
+body.login-page > main.login-shell {
+  max-width: 440px;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none;
+}
+
+body.is-leaving {
+  opacity: 0;
+}
+
+body.is-leaving > main {
+  transform: translateY(5px);
+}
+
+@media (max-width: 700px) {
+  body > nav {
+    padding-right: 96px;
+  }
+
+  body > nav .sound-toggle {
+    margin-left: 0;
+  }
+
+  body > nav .user-menu,
+  body > nav .profile-login {
+    top: 12px;
+    right: 12px;
+  }
+
+  body > .profile-login {
+    top: 12px;
+    right: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

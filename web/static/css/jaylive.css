@@ -472,8 +472,15 @@ main {
   }
 
   .survivor-stage {
-    min-height: 520px;
-    aspect-ratio: 4 / 3;
+    width: 100%;
+    height: clamp(420px, 120vw, 520px);
+    min-height: 0;
+    aspect-ratio: auto;
+  }
+
+  .pixel-screen {
+    overflow-y: auto;
+    place-items: start center;
   }
 
   .game-hud {

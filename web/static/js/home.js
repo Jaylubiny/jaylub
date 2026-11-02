@@ -1,5 +1,6 @@
 document.addEventListener("DOMContentLoaded", () => {
     const btn = document.getElementById("cta-btn");
+    if (!btn) return;
 
     btn.addEventListener("click", () => {
         btn.innerText = "Loading...";

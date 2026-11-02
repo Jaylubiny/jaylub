@@ -1,0 +1,59 @@
+{{define "head"}}
+<link rel="stylesheet" href="/web/static/css/typing.css?v=6">
+<script src="/web/static/js/typing.js?v=8" defer></script>
+{{end}}
+
+{{define "content"}}
+<section class="typing-page" data-typing-app>
+    <header>
+        <h1>Typing speed test</h1>
+        <p>Practice your typing, track your personal best, and compare scores with the community.</p>
+    </header>
+
+    <section class="typing-toolbar card" aria-label="Typing test settings">
+        <p>Your PB: <strong data-personal-best>—</strong></p>
+        <label for="typing-mode">Mode</label>
+        <select id="typing-mode" data-mode>
+            <option value="15s">15 seconds</option>
+            <option value="30s">30 seconds</option>
+            <option value="60s">60 seconds</option>
+        </select>
+        <a class="action-button secondary" href="/typing/settings">Text settings</a>
+        <button type="button" class="action-button secondary" data-restart>Restart</button>
+    </section>
+
+    <section class="typing-stats" aria-label="Live test statistics">
+        <div class="card"><span>Time remaining</span><strong data-time>15</strong></div>
+        <div class="card"><span>Live WPM</span><strong data-wpm>0</strong></div>
+        <div class="card"><span>Accuracy</span><strong data-accuracy>100%</strong></div>
+    </section>
+
+    <section class="card typing-test" aria-label="Typing test">
+        <div class="typing-target" data-target role="textbox" aria-label="Typing test text"
+            aria-multiline="false" aria-describedby="typing-result" contenteditable="true"
+            spellcheck="false" autocapitalize="off" autocomplete="off"></div>
+        <p data-result id="typing-result" role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="card typing-personal-stats" aria-label="Personal statistics">
+        <h2>Your stats for this mode</h2>
+        <p>Personal best: <strong data-stats-pb>—</strong></p>
+        <p>Average accuracy: <strong data-stats-accuracy>—</strong></p>
+        <p>Tests completed: <strong data-test-count>0</strong></p>
+    </section>
+
+    <section class="card typing-leaderboard" aria-labelledby="typing-leaderboard-title">
+        <h2 id="typing-leaderboard-title">Leaderboard</h2>
+        <div class="typing-table-wrap">
+            <table class="leaderboard-table">
+                <thead>
+                    <tr><th scope="col">Rank</th><th scope="col">Username</th><th scope="col">WPM</th><th scope="col">Accuracy</th><th scope="col">Date</th></tr>
+                </thead>
+                <tbody data-leaderboard>
+                    <tr><td colspan="5">Loading leaderboard…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</section>
+{{end}}

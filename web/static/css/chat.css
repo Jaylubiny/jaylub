@@ -18,6 +18,8 @@
 }
 
 .chat-header {
+  position: relative;
+  z-index: 10;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -37,6 +39,7 @@
 
 .chat-status {
   position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -57,7 +60,7 @@
 
 .online-users-tooltip {
   position: absolute;
-  z-index: 5;
+  z-index: 2;
   top: calc(100% + 8px);
   right: 0;
   display: none;
@@ -99,6 +102,8 @@
 }
 
 .chat-channel-tabs {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;

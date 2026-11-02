@@ -1,0 +1,122 @@
+.typing-page {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.typing-toolbar,
+.typing-stats {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.typing-toolbar p {
+  margin: 0 auto 0 0;
+}
+
+.typing-stats > .card {
+  display: grid;
+  flex: 1 1 8rem;
+  gap: 0.4rem;
+}
+
+.typing-test,
+.typing-personal-stats,
+.typing-leaderboard {
+  display: grid;
+  gap: 1rem;
+}
+
+.typing-target {
+  box-sizing: border-box;
+  min-height: 10rem;
+  padding: 1rem;
+  border: 1px solid var(--theme-border);
+  border-radius: var(--theme-radius-sm);
+  background: var(--theme-bg-2);
+  line-height: 2;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  cursor: text;
+  caret-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  font-size: var(--typing-text-size, 18px);
+}
+
+.typing-target:focus-visible {
+  outline: 2px solid var(--theme-purple-2);
+  outline-offset: 2px;
+}
+
+.typing-target [data-state="correct"] {
+  color: var(--theme-purple-2);
+}
+
+.typing-target [data-state="incorrect"] {
+  text-decoration: underline wavy;
+  text-decoration-thickness: 2px;
+}
+
+.typing-target [data-state="current"] {
+  border-radius: 0.15em;
+  outline: 1px solid var(--theme-purple-2);
+  background: rgba(139, 92, 246, 0.16);
+  box-shadow: 0 0 0.55em rgba(139, 92, 246, 0.55);
+}
+
+.typing-toolbar select:focus-visible {
+  outline: 2px solid var(--theme-purple-2);
+  outline-offset: 2px;
+}
+
+.typing-table-wrap {
+  overflow-x: auto;
+}
+
+.typing-settings {
+  display: grid;
+  gap: 1.25rem;
+  max-width: 42rem;
+}
+
+.typing-settings-control {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.typing-settings-control input[type="range"] {
+  width: 100%;
+  accent-color: var(--theme-purple);
+}
+
+.typing-settings-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.typing-settings-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 600px) {
+  .typing-toolbar p {
+    flex-basis: 100%;
+  }
+}

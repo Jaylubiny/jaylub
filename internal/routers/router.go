@@ -4,6 +4,7 @@ import (
 	"jaylub/internal/auth"
 	"jaylub/internal/email"
 	"jaylub/internal/handlers/root"
+	"jaylub/internal/typing"
 	"net/http"
 )
 
@@ -13,13 +14,22 @@ type route struct {
 }
 
 // Router for main site (:8080)
-func Basic(authService *auth.Service) http.Handler {
+func Basic(authService *auth.Service) (http.Handler, error) {
 	handlers.UseStatsDB(authService.DB())
 	chatService := handlers.NewChatService(authService.DB())
 	jayliveService := handlers.NewJayliveService(authService.DB())
+	typingService, err := typing.NewService(authService.DB())
+	if err != nil {
+		return nil, err
+	}
 
 	routes := []route{
 		{"/", handlers.Home},
+		{"/typing", typingService.Page},
+		{"/typing/settings", typingService.SettingsPage},
+		{"/api/typing/score", typingService.Score},
+		{"/api/typing/leaderboard", typingService.Leaderboard},
+		{"/api/typing/user-stats", typingService.UserStats},
 		{"/about", handlers.About},
 		{"/me", handlers.Me},
 		{"/settings", handlers.Settings(authService)},
@@ -62,7 +72,7 @@ func Basic(authService *auth.Service) http.Handler {
 		{"/chat/send", chatService.SendMessage},
 		{"/chat/files/", chatService.File},
 	}
-	return newMux(routes, authService)
+	return newMux(routes, authService), nil
 }
 
 // Dedicated Router for email.jaylub.com (:9010)
