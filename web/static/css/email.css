@@ -446,6 +446,44 @@
   white-space: pre-wrap;
 }
 
+.email-attachments {
+  border-top: 1px solid var(--mail-line);
+  margin-top: 24px;
+  padding-top: 16px;
+}
+
+.email-attachments h3 {
+  font-size: 13px;
+  margin: 0 0 10px;
+}
+
+.email-attachments ul {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.email-attachments li {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  overflow-wrap: anywhere;
+}
+
+.email-attachments a {
+  color: var(--theme-purple-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.email-attachments li span {
+  color: var(--mail-muted);
+  font-size: 11px;
+}
+
 .email-notice {
   color: var(--mail-muted);
   min-height: 22px;

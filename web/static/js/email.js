@@ -21,6 +21,12 @@
     notice.textContent = message;
   }
 
+  function formatFileSize(value) {
+    if (value < 1024) return `${value} B`;
+    if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
   function selectedEmail() {
     return state.emails.find((email) => email.id === state.selectedId) || null;
   }
@@ -54,10 +60,28 @@
     document.querySelector("#message-to").textContent = email.recipient;
     document.querySelector("#message-date").textContent = dateText(email.timestamp);
     document.querySelector("#message-body").textContent = email.body;
+    const attachmentSection = document.querySelector("#message-attachments");
+    const attachmentList = document.querySelector("#message-attachment-list");
+    attachmentList.replaceChildren();
+    for (const attachment of email.attachments || []) {
+      const item = document.createElement("li");
+      const link = document.createElement("a");
+      link.href = attachment.url;
+      link.download = attachment.filename;
+      link.textContent = attachment.filename;
+      const details = document.createElement("span");
+      details.textContent = `${attachment.mimeType} · ${formatFileSize(attachment.size)}`;
+      item.append(link, details);
+      attachmentList.append(item);
+    }
+    attachmentSection.hidden = !(email.attachments || []).length;
 
     const actions = document.querySelector("#message-actions");
     actions.replaceChildren();
     actions.append(actionButton("Reply", () => replyTo(email)));
+    if (state.folder !== "trash") {
+      actions.append(actionButton("Move to trash", () => mutate("/api/emails/trash", { id: email.id }), true));
+    }
   }
 
   function replyTo(email) {

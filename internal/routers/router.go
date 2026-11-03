@@ -90,6 +90,7 @@ func Email(emailService *email.Service, authService *auth.Service) http.Handler 
 		{"/docs", handlers.Docs},
 		{"/documentation", handlers.Docs},
 		{"/api/emails", emailHandler.GetEmails},
+		{"/api/emails/attachments/", emailHandler.DownloadAttachment},
 		{"/api/send", emailHandler.SendEmail},
 		{"/api/emails/read", emailHandler.MarkRead},
 		{"/api/emails/trash", emailHandler.MoveToTrash},

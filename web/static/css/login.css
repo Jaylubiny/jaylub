@@ -68,6 +68,20 @@
   border-radius: 8px;
 }
 
+.login-lockout {
+  display: grid;
+  gap: 5px;
+}
+
+.login-lockout > strong {
+  color: #fff;
+}
+
+.login-lockout [data-lockout-countdown] {
+  color: #fff;
+  white-space: nowrap;
+}
+
 .login-form {
   display: grid;
   gap: 10px;

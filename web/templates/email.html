@@ -1,6 +1,6 @@
 {{define "head"}}
-<link rel="stylesheet" href="/web/static/css/email.css?v=16">
-<script src="/web/static/js/email.js?v=5" defer></script>
+<link rel="stylesheet" href="/web/static/css/email.css?v=17">
+<script src="/web/static/js/email.js?v=7" defer></script>
 {{end}}
 
 {{define "content"}}
@@ -101,6 +101,10 @@
                     <div><dt>Date</dt><dd id="message-date"></dd></div>
                 </dl>
                 <div class="email-message-body" id="message-body"></div>
+                <section class="email-attachments" id="message-attachments" aria-label="Attachments" hidden>
+                    <h3>Attachments</h3>
+                    <ul id="message-attachment-list"></ul>
+                </section>
             </article>
         </section>
     </div>

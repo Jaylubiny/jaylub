@@ -13,13 +13,13 @@
   <meta property="og:url" content="{{.OpenGraphURL}}">
   <link rel="icon" href="/web/static/img/icon.png" type="image/png">
   <link rel="stylesheet" href="/web/static/css/layout.css?v=profile-stats-1" />
-  <link rel="stylesheet" href="/web/static/css/login.css?v=purple-login-1" />
+  <link rel="stylesheet" href="/web/static/css/login.css?v=lockout-notice-1" />
   <link rel="stylesheet" href="/web/static/css/components.css?v=purple-1" />
-  <link rel="stylesheet" href="/web/static/css/theme.css?v=purple-me-1" />
+  <link rel="stylesheet" href="/web/static/css/theme.css?v=outline-create-account-1" />
   <link rel="stylesheet" href="/web/static/css/atelier.css?v=6" />
   <script src="/web/static/js/layout.js?v=purple-light-2" defer></script>
   <script src="/web/static/js/atelier.js?v=1" defer></script>
-  <script src="/web/static/js/login.js" defer></script>
+  <script src="/web/static/js/login.js?v=lockout-notice-1" defer></script>
 </head>
 <body class="login-page">
   <div id="cursor"></div>
@@ -38,8 +38,15 @@
         </div>
       </div>
 
-      {{if .Error}}
+      {{if or .LoginLocked .Error}}
+      {{if .LoginLocked}}
+      <p class="login-error login-lockout" role="alert" aria-live="assertive">
+        <strong>Sign-in temporarily locked</strong>
+        <span>Too many failed attempts. You can try again in <strong data-lockout-countdown data-seconds="{{.LockoutSeconds}}">{{.LockoutSeconds}} seconds</strong>.</span>
+      </p>
+      {{else}}
       <p class="login-error" role="alert">{{.Error}}</p>
+      {{end}}
       {{end}}
 
       <form class="login-form" method="post" action="/login">

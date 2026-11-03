@@ -33,6 +33,7 @@
 *.dump
 .bin/
 internal/database/files/
+internal/database/email-attachments/
 data/
 cloudflared/
 node_modules/
@@ -46,6 +47,7 @@ __pycache__/
 
 # Tests are not required to run the application.
 *_test.go
+!internal/auth/login_lockout_test.go
 *_test.py
 test_*.py
 *.test.*

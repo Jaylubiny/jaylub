@@ -81,16 +81,30 @@ signed-in account; trashed messages can be restored or permanently deleted.
 Configure `RESEND_API_KEY` to enable outgoing mail and `WEBHOOK_SECRET` for
 incoming-mail delivery. The incoming webhook accepts `POST
 /api/webhooks/incoming` with an `X-Secret-Auth` header and JSON fields `from`,
-`to`, `subject`, and `text`. Mailbox data is stored in
-`internal/database/emails.db`; mailbox-state columns are added without
+`to`, `subject`, and `text`, with an optional `attachments` array containing
+`filename`, `mimeType`, `size`, and Base64-encoded `data`. Attachments are
+limited to 10 MiB each, 25 MiB total per message, and 10 files per message.
+Attachment bytes are stored in the private
+`internal/database/email-attachments/` directory, while their metadata is stored
+alongside the email in `internal/database/emails.db`. The authenticated mailbox
+lists each attachment and serves it from `/api/emails/attachments/{id}` only to
+the owning mailbox. Mailbox-state and attachment tables are added without
 replacing existing email rows. Messages in all folders (Inbox, Sent, and Trash)
-are permanently deleted once their stored timestamp is more than 29 days old.
-Expired messages are purged at startup and checked again every 24 hours.
+are permanently deleted once their stored timestamp is more than 29 days old;
+their attachment records and files are removed as well. Expired messages are
+purged at startup and checked again every 24 hours.
 
 For reverse-proxy deployments, set `SESSION_COOKIE_DOMAIN=.jaylub.com` so the
 login and device-terms cookies are shared by the main site and email subdomain.
 The application also recognizes the `X-Forwarded-Host` header and falls back
 to `MY_DOMAIN` when the proxy rewrites the request host.
+
+Sign-in failures are tracked per account in `users.db`. The 10th consecutive
+incorrect password locks that account for one minute. After the lock expires,
+five more incorrect passwords trigger a 10-minute lock; each later group of
+five failures also triggers a 10-minute lock. A successful sign-in clears the
+failure count. Active lockouts are reported with HTTP `429` and a `Retry-After`
+header.
 
 ## TYPING TEST
 

@@ -2,10 +2,14 @@ package email
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/mail"
@@ -19,21 +23,46 @@ import (
 
 const MailboxDomain = "jaylub.com"
 
-var (
-	ErrNotFound      = errors.New("email not found")
-	ErrInvalidFolder = errors.New("invalid mailbox folder")
+const (
+	MaxIncomingAttachmentBytes       = 10 << 20
+	MaxIncomingAttachmentsTotalBytes = 25 << 20
+	MaxIncomingAttachments           = 10
 )
 
+var (
+	ErrNotFound           = errors.New("email not found")
+	ErrInvalidFolder      = errors.New("invalid mailbox folder")
+	ErrInvalidAttachment  = errors.New("invalid email attachment")
+	ErrAttachmentTooLarge = errors.New("email attachment exceeds the size limit")
+	ErrTooManyAttachments = errors.New("too many email attachments")
+)
+
+type EmailAttachment struct {
+	ID       int64  `json:"id"`
+	Filename string `json:"filename"`
+	Size     int64  `json:"size"`
+	MIMEType string `json:"mimeType"`
+	URL      string `json:"url"`
+}
+
+type IncomingAttachment struct {
+	Filename string
+	MIMEType string
+	Size     int64
+	Data     []byte
+}
+
 type Email struct {
-	ID             int64  `json:"id"`
-	Sender         string `json:"sender"`
-	Recipient      string `json:"recipient"`
-	Subject        string `json:"subject"`
-	Body           string `json:"body"`
-	Timestamp      string `json:"timestamp"`
-	Folder         string `json:"folder"`
-	Read           bool   `json:"read"`
-	PreviousFolder string `json:"previous_folder,omitempty"`
+	ID             int64             `json:"id"`
+	Sender         string            `json:"sender"`
+	Recipient      string            `json:"recipient"`
+	Subject        string            `json:"subject"`
+	Body           string            `json:"body"`
+	Timestamp      string            `json:"timestamp"`
+	Folder         string            `json:"folder"`
+	Read           bool              `json:"read"`
+	PreviousFolder string            `json:"previous_folder,omitempty"`
+	Attachments    []EmailAttachment `json:"attachments,omitempty"`
 }
 
 func MailboxAddress(username string) string {
@@ -48,6 +77,7 @@ type Service struct {
 	db            *sql.DB
 	sender        Sender
 	webhookSecret string
+	attachmentDir string
 }
 
 func New(dbPath, resendAPIKey, _ string, webhookSecret string) (*Service, error) {
@@ -65,6 +95,15 @@ func New(dbPath, resendAPIKey, _ string, webhookSecret string) (*Service, error)
 		db:            db,
 		sender:        resendSender{apiKey: resendAPIKey, client: &http.Client{Timeout: 20 * time.Second}},
 		webhookSecret: webhookSecret,
+		attachmentDir: filepath.Join(filepath.Dir(dbPath), "email-attachments"),
+	}
+	if err := os.MkdirAll(service.attachmentDir, 0700); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("create email attachment storage: %w", err)
+	}
+	if err := os.Chmod(service.attachmentDir, 0700); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("secure email attachment storage: %w", err)
 	}
 	if err := service.initSchema(); err != nil {
 		_ = db.Close()
@@ -127,13 +166,39 @@ func (s *Service) initSchema() error {
 	_, err := s.db.Exec(`
 		CREATE INDEX IF NOT EXISTS idx_emails_recipient_folder ON emails(recipient, folder, timestamp DESC);
 		CREATE INDEX IF NOT EXISTS idx_emails_sender_folder ON emails(sender, folder, timestamp DESC);
-		CREATE INDEX IF NOT EXISTS idx_emails_timestamp ON emails(timestamp)
+		CREATE INDEX IF NOT EXISTS idx_emails_timestamp ON emails(timestamp);
+		CREATE TABLE IF NOT EXISTS email_attachments (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			email_id INTEGER NOT NULL,
+			filename TEXT NOT NULL,
+			storage_path TEXT NOT NULL UNIQUE,
+			file_size INTEGER NOT NULL,
+			mime_type TEXT NOT NULL,
+			FOREIGN KEY (email_id) REFERENCES emails(id) ON DELETE CASCADE
+		);
+		CREATE INDEX IF NOT EXISTS idx_email_attachments_email_id ON email_attachments(email_id)
 	`)
 	return err
 }
 
 func (s *Service) PurgeExpiredEmails() (int64, error) {
-	result, err := s.db.Exec(`
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("begin expired email cleanup: %w", err)
+	}
+	defer tx.Rollback()
+
+	paths, err := attachmentPathsForExpiredEmails(tx)
+	if err != nil {
+		return 0, fmt.Errorf("list expired email attachments: %w", err)
+	}
+	if _, err := tx.Exec(`
+		DELETE FROM email_attachments
+		WHERE email_id IN (SELECT id FROM emails WHERE timestamp < datetime('now', '-29 days'))
+	`); err != nil {
+		return 0, fmt.Errorf("delete expired email attachments: %w", err)
+	}
+	result, err := tx.Exec(`
 		DELETE FROM emails
 		WHERE timestamp < datetime('now', '-29 days')
 	`)
@@ -144,7 +209,47 @@ func (s *Service) PurgeExpiredEmails() (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("count deleted expired emails: %w", err)
 	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit expired email cleanup: %w", err)
+	}
+	if err := s.removeStoredAttachments(paths); err != nil {
+		return deleted, err
+	}
 	return deleted, nil
+}
+
+func attachmentPathsForExpiredEmails(tx *sql.Tx) ([]string, error) {
+	rows, err := tx.Query(`
+		SELECT storage_path
+		FROM email_attachments
+		WHERE email_id IN (SELECT id FROM emails WHERE timestamp < datetime('now', '-29 days'))
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var paths []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return nil, err
+		}
+		paths = append(paths, path)
+	}
+	return paths, rows.Err()
+}
+
+func (s *Service) removeStoredAttachments(paths []string) error {
+	for _, path := range paths {
+		if filepath.Base(path) != path || path == "." || path == "" {
+			return errors.New("invalid attachment storage path during cleanup")
+		}
+		if err := os.Remove(filepath.Join(s.attachmentDir, path)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("remove stored email attachment: %w", err)
+		}
+	}
+	return nil
 }
 
 func (s *Service) addColumnIfMissing(name, definition string) error {
@@ -180,11 +285,112 @@ func (s *Service) addColumnIfMissing(name, definition string) error {
 }
 
 func (s *Service) SaveIncoming(sender, recipient, subject, body string) error {
-	_, err := s.db.Exec(`
+	return s.SaveIncomingWithAttachments(sender, recipient, subject, body, nil)
+}
+
+func (s *Service) SaveIncomingWithAttachments(sender, recipient, subject, body string, attachments []IncomingAttachment) error {
+	if len(attachments) > MaxIncomingAttachments {
+		return ErrTooManyAttachments
+	}
+	totalSize := int64(0)
+	for _, attachment := range attachments {
+		if attachment.Filename == "" || attachment.Size != int64(len(attachment.Data)) || attachment.Size < 0 {
+			return ErrInvalidAttachment
+		}
+		if attachment.Size > MaxIncomingAttachmentBytes {
+			return ErrAttachmentTooLarge
+		}
+		totalSize += attachment.Size
+		if totalSize > MaxIncomingAttachmentsTotalBytes {
+			return ErrAttachmentTooLarge
+		}
+	}
+
+	storedPaths := make([]string, 0, len(attachments))
+	cleanup := func() {
+		for _, path := range storedPaths {
+			if err := os.Remove(filepath.Join(s.attachmentDir, path)); err != nil && !errors.Is(err, os.ErrNotExist) {
+				log.Printf("remove incomplete email attachment %q: %v", path, err)
+			}
+		}
+	}
+	for _, attachment := range attachments {
+		path, err := s.storeAttachment(attachment.Data)
+		if err != nil {
+			cleanup()
+			return fmt.Errorf("store email attachment: %w", err)
+		}
+		storedPaths = append(storedPaths, path)
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		cleanup()
+		return fmt.Errorf("begin incoming email save: %w", err)
+	}
+	defer tx.Rollback()
+
+	result, err := tx.Exec(`
 		INSERT INTO emails (sender, recipient, subject, body, folder, is_read)
 		VALUES (?, ?, ?, ?, 'inbox', 0)
 	`, strings.TrimSpace(sender), strings.TrimSpace(recipient), subject, body)
-	return err
+	if err != nil {
+		cleanup()
+		return err
+	}
+	emailID, err := result.LastInsertId()
+	if err != nil {
+		cleanup()
+		return err
+	}
+	for i, attachment := range attachments {
+		if _, err := tx.Exec(`
+			INSERT INTO email_attachments (email_id, filename, storage_path, file_size, mime_type)
+			VALUES (?, ?, ?, ?, ?)
+		`, emailID, attachment.Filename, storedPaths[i], attachment.Size, attachment.MIMEType); err != nil {
+			cleanup()
+			return fmt.Errorf("save email attachment metadata: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		cleanup()
+		return fmt.Errorf("commit incoming email: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) storeAttachment(data []byte) (string, error) {
+	var randomName [16]byte
+	if _, err := rand.Read(randomName[:]); err != nil {
+		return "", fmt.Errorf("generate attachment storage name: %w", err)
+	}
+	storagePath := hex.EncodeToString(randomName[:])
+
+	temp, err := os.CreateTemp(s.attachmentDir, ".incoming-*.tmp")
+	if err != nil {
+		return "", err
+	}
+	tempPath := temp.Name()
+	defer os.Remove(tempPath)
+	if err := temp.Chmod(0600); err != nil {
+		_ = temp.Close()
+		return "", err
+	}
+	if _, err := io.Copy(temp, bytes.NewReader(data)); err != nil {
+		_ = temp.Close()
+		return "", err
+	}
+	if err := temp.Sync(); err != nil {
+		_ = temp.Close()
+		return "", err
+	}
+	if err := temp.Close(); err != nil {
+		return "", err
+	}
+	if err := os.Rename(tempPath, filepath.Join(s.attachmentDir, storagePath)); err != nil {
+		return "", err
+	}
+	return storagePath, nil
 }
 
 func (s *Service) GetMailboxEmails(owner, folder string) ([]Email, error) {
@@ -217,7 +423,65 @@ func (s *Service) GetMailboxEmails(owner, folder string) ([]Email, error) {
 		e.Read = read != 0
 		emails = append(emails, e)
 	}
-	return emails, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	for i := range emails {
+		attachments, err := s.emailAttachments(emails[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		emails[i].Attachments = attachments
+	}
+	return emails, nil
+}
+
+func (s *Service) emailAttachments(emailID int64) ([]EmailAttachment, error) {
+	rows, err := s.db.Query(`
+		SELECT id, filename, file_size, mime_type
+		FROM email_attachments
+		WHERE email_id = ?
+		ORDER BY id
+	`, emailID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	attachments := make([]EmailAttachment, 0)
+	for rows.Next() {
+		var attachment EmailAttachment
+		if err := rows.Scan(&attachment.ID, &attachment.Filename, &attachment.Size, &attachment.MIMEType); err != nil {
+			return nil, err
+		}
+		attachment.URL = fmt.Sprintf("/api/emails/attachments/%d", attachment.ID)
+		attachments = append(attachments, attachment)
+	}
+	return attachments, rows.Err()
+}
+
+func (s *Service) AttachmentForMailbox(owner string, id int64) (EmailAttachment, string, error) {
+	var attachment EmailAttachment
+	var storagePath string
+	err := s.db.QueryRow(`
+		SELECT a.id, a.filename, a.file_size, a.mime_type, a.storage_path
+		FROM email_attachments a
+		JOIN emails e ON e.id = a.email_id
+		WHERE a.id = ? AND lower(e.recipient) = lower(?)
+	`, id, owner).Scan(&attachment.ID, &attachment.Filename, &attachment.Size, &attachment.MIMEType, &storagePath)
+	if errors.Is(err, sql.ErrNoRows) {
+		return EmailAttachment{}, "", ErrNotFound
+	}
+	if err != nil {
+		return EmailAttachment{}, "", err
+	}
+	if filepath.Base(storagePath) != storagePath || storagePath == "." || storagePath == "" {
+		return EmailAttachment{}, "", errors.New("invalid attachment storage path")
+	}
+	return attachment, filepath.Join(s.attachmentDir, storagePath), nil
 }
 
 func (s *Service) SendEmail(from, to, subject, body string) error {
@@ -266,12 +530,56 @@ func (s *Service) Restore(owner string, id int64) error {
 }
 
 func (s *Service) DeleteFromTrash(owner string, id int64) error {
-	result, err := s.db.Exec(`
-		DELETE FROM emails
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var emailID int64
+	err = tx.QueryRow(`
+		SELECT id FROM emails
 		WHERE id = ? AND folder = 'trash'
 			AND (CASE WHEN previous_folder = 'sent' THEN lower(sender) ELSE lower(recipient) END) = lower(?)
-	`, id, owner)
-	return affected(result, err)
+	`, id, owner).Scan(&emailID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	paths, err := attachmentPathsForEmail(tx, emailID)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM email_attachments WHERE email_id = ?`, emailID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM emails WHERE id = ?`, emailID); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return s.removeStoredAttachments(paths)
+}
+
+func attachmentPathsForEmail(tx *sql.Tx, emailID int64) ([]string, error) {
+	rows, err := tx.Query(`SELECT storage_path FROM email_attachments WHERE email_id = ?`, emailID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var paths []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return nil, err
+		}
+		paths = append(paths, path)
+	}
+	return paths, rows.Err()
 }
 
 func affected(result sql.Result, err error) error {
@@ -289,7 +597,7 @@ func affected(result sql.Result, err error) error {
 }
 
 func (s *Service) ValidateSecret(secret string) bool {
-	return s.webhookSecret != "" && s.webhookSecret == secret
+	return s.webhookSecret != "" && hmac.Equal([]byte(s.webhookSecret), []byte(secret))
 }
 
 type resendSender struct {

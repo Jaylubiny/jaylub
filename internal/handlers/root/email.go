@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -8,7 +9,12 @@ import (
 	"mime"
 	"net/http"
 	"net/mail"
+	"os"
+	"strconv"
 	"strings"
+	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"jaylub/internal/auth"
 	"jaylub/internal/email"
@@ -23,10 +29,18 @@ func NewEmailHandler(service *email.Service) *EmailHandler {
 }
 
 type IncomingPayload struct {
-	From    string `json:"from"`
-	To      string `json:"to"`
-	Subject string `json:"subject"`
-	Text    string `json:"text"`
+	From        string                      `json:"from"`
+	To          string                      `json:"to"`
+	Subject     string                      `json:"subject"`
+	Text        string                      `json:"text"`
+	Attachments []IncomingAttachmentPayload `json:"attachments"`
+}
+
+type IncomingAttachmentPayload struct {
+	Filename string `json:"filename"`
+	MIMEType string `json:"mimeType"`
+	Size     int64  `json:"size"`
+	Data     string `json:"data"`
 }
 
 func (h *EmailHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
@@ -38,7 +52,12 @@ func (h *EmailHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload IncomingPayload
-	if err := decodeJSON(w, r, &payload, 2<<20); err != nil {
+	if err := decodeJSON(w, r, &payload, 36<<20); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			http.Error(w, "Email payload exceeds the allowed size", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "Invalid email payload", http.StatusBadRequest)
 		return
 	}
@@ -46,12 +65,119 @@ func (h *EmailHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Sender and recipient are required", http.StatusBadRequest)
 		return
 	}
-	if err := h.emailService.SaveIncoming(payload.From, payload.To, payload.Subject, payload.Text); err != nil {
+	if len(payload.Attachments) > email.MaxIncomingAttachments {
+		http.Error(w, "Too many email attachments", http.StatusRequestEntityTooLarge)
+		return
+	}
+	attachments := make([]email.IncomingAttachment, 0, len(payload.Attachments))
+	totalSize := int64(0)
+	for _, incoming := range payload.Attachments {
+		filename, ok := safeAttachmentFilename(incoming.Filename)
+		if !ok || incoming.Size < 0 {
+			http.Error(w, "Invalid email attachment metadata", http.StatusBadRequest)
+			return
+		}
+		if incoming.Size > email.MaxIncomingAttachmentBytes {
+			http.Error(w, "Email attachments must be 10 MiB or smaller", http.StatusRequestEntityTooLarge)
+			return
+		}
+		if incoming.Size > email.MaxIncomingAttachmentsTotalBytes-totalSize {
+			http.Error(w, "Email attachments exceed the 25 MiB total limit", http.StatusRequestEntityTooLarge)
+			return
+		}
+		data, err := base64.StdEncoding.Strict().DecodeString(incoming.Data)
+		if err != nil || int64(len(data)) != incoming.Size {
+			http.Error(w, "Invalid base64 data or attachment size", http.StatusBadRequest)
+			return
+		}
+		mimeType := "application/octet-stream"
+		if incoming.MIMEType != "" {
+			parsedType, _, err := mime.ParseMediaType(incoming.MIMEType)
+			if err != nil || parsedType == "" {
+				http.Error(w, "Invalid attachment MIME type", http.StatusBadRequest)
+				return
+			}
+			mimeType = parsedType
+		}
+		totalSize += incoming.Size
+		attachments = append(attachments, email.IncomingAttachment{
+			Filename: filename,
+			MIMEType: mimeType,
+			Size:     incoming.Size,
+			Data:     data,
+		})
+	}
+	if err := h.emailService.SaveIncomingWithAttachments(payload.From, payload.To, payload.Subject, payload.Text, attachments); err != nil {
 		log.Printf("save incoming email: %v", err)
 		http.Error(w, "Unable to save incoming email", http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
+}
+
+func safeAttachmentFilename(filename string) (string, bool) {
+	filename = strings.TrimSpace(strings.ReplaceAll(filename, `\`, `/`))
+	filename = strings.TrimPrefix(filename, "/")
+	if index := strings.LastIndex(filename, "/"); index >= 0 {
+		filename = filename[index+1:]
+	}
+	if filename == "" || len(filename) > 255 || !utf8.ValidString(filename) {
+		return "", false
+	}
+	for _, char := range filename {
+		if unicode.IsControl(char) {
+			return "", false
+		}
+	}
+	return filename, true
+}
+
+func (h *EmailHandler) DownloadAttachment(w http.ResponseWriter, r *http.Request) {
+	if !requireEmailMethod(w, r, http.MethodGet) {
+		return
+	}
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	idText := strings.TrimPrefix(r.URL.Path, "/api/emails/attachments/")
+	if idText == "" || strings.Contains(idText, "/") {
+		http.NotFound(w, r)
+		return
+	}
+	id, err := strconv.ParseInt(idText, 10, 64)
+	if err != nil || id < 1 {
+		http.NotFound(w, r)
+		return
+	}
+	attachment, path, err := h.emailService.AttachmentForMailbox(email.MailboxAddress(user.Username), id)
+	if errors.Is(err, email.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		log.Printf("find email attachment %d for user %d: %v", id, user.ID, err)
+		http.Error(w, "Unable to load attachment", http.StatusInternalServerError)
+		return
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		log.Printf("open email attachment %d for user %d: %v", id, user.ID, err)
+		http.Error(w, "Unable to load attachment", http.StatusInternalServerError)
+		return
+	}
+	defer file.Close()
+
+	disposition := mime.FormatMediaType("attachment", map[string]string{"filename": attachment.Filename})
+	if disposition == "" {
+		disposition = "attachment"
+	}
+	w.Header().Set("Content-Type", attachment.MIMEType)
+	w.Header().Set("Content-Disposition", disposition)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "private, no-store")
+	http.ServeContent(w, r, attachment.Filename, time.Time{}, file)
 }
 
 func (h *EmailHandler) GetEmails(w http.ResponseWriter, r *http.Request) {

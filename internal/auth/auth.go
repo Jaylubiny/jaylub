@@ -9,12 +9,15 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -22,12 +25,26 @@ import (
 )
 
 const (
-	cookieName          = "jaylub_session_v2"
-	termsDeviceCookie   = "jaylub_terms_device"
-	sessionDuration     = 30 * 24 * time.Hour
-	termsDeviceDuration = 365 * 24 * time.Hour
-	CurrentTermsVersion = "2026-10-06-device"
+	cookieName                   = "jaylub_session_v2"
+	termsDeviceCookie            = "jaylub_terms_device"
+	sessionDuration              = 30 * 24 * time.Hour
+	termsDeviceDuration          = 365 * 24 * time.Hour
+	CurrentTermsVersion          = "2026-10-06-device"
+	initialLoginFailureLimit     = 10
+	repeatedLoginFailureLimit    = 5
+	initialLoginLockoutDuration  = time.Minute
+	repeatedLoginLockoutDuration = 10 * time.Minute
 )
+
+var ErrInvalidCredentials = errors.New("invalid credentials")
+
+type LoginLockedError struct {
+	RetryAfter time.Duration
+}
+
+func (e *LoginLockedError) Error() string {
+	return "too many sign-in attempts"
+}
 
 type contextKey string
 
@@ -48,6 +65,8 @@ type loginPageData struct {
 	OpenGraphURL    string
 	Robots          string
 	Error           string
+	LoginLocked     bool
+	LockoutSeconds  int
 }
 
 type ChatSettings struct {
@@ -58,7 +77,8 @@ type ChatSettings struct {
 }
 
 type Service struct {
-	db *sql.DB
+	db      *sql.DB
+	loginMu sync.Mutex
 }
 
 func New(dbPath string) (*Service, error) {
@@ -170,6 +190,13 @@ func (s *Service) initSchema() error {
 			expires_at DATETIME NOT NULL,
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		);
+
+		CREATE TABLE IF NOT EXISTS login_attempts (
+			username TEXT PRIMARY KEY,
+			failed_attempts INTEGER NOT NULL DEFAULT 0,
+			lockout_stage INTEGER NOT NULL DEFAULT 0,
+			lockout_until DATETIME
 		);
 
 		CREATE TABLE IF NOT EXISTS terms_acceptances (
@@ -404,12 +431,31 @@ func (s *Service) addColumnIfMissing(table, column, definition string) error {
 }
 
 func (s *Service) Login(w http.ResponseWriter, r *http.Request, username, password string) error {
-	user, passwordHash, err := s.userWithPasswordHash(username)
+	s.loginMu.Lock()
+	defer s.loginMu.Unlock()
+
+	username = strings.TrimSpace(username)
+	lockoutKey := strings.ToLower(username)
+	if lockoutKey == "" {
+		return ErrInvalidCredentials
+	}
+	retryAfter, err := s.loginRetryAfter(lockoutKey, time.Now().UTC())
 	if err != nil {
 		return err
 	}
+	if retryAfter > 0 {
+		return &LoginLockedError{RetryAfter: retryAfter}
+	}
+
+	user, passwordHash, err := s.userWithPasswordHash(username)
+	if err != nil {
+		if errors.Is(err, ErrInvalidCredentials) {
+			return s.failedLoginError(lockoutKey)
+		}
+		return err
+	}
 	if bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password)) != nil {
-		return errors.New("invalid credentials")
+		return s.failedLoginError(lockoutKey)
 	}
 
 	token, err := randomToken()
@@ -427,11 +473,102 @@ func (s *Service) Login(w http.ResponseWriter, r *http.Request, username, passwo
 	if err != nil {
 		return err
 	}
+	if _, err := s.db.Exec(`DELETE FROM login_attempts WHERE username = ?`, lockoutKey); err != nil {
+		return err
+	}
 
 	// The raw session token is sent only in an HttpOnly cookie; the database
 	// stores a SHA-256 hash so a leaked database cannot be used as active login cookies.
 	http.SetCookie(w, s.sessionCookie(r, token, expiresAt))
 	return nil
+}
+
+func (s *Service) failedLoginError(username string) error {
+	retryAfter, err := s.recordFailedLogin(username, time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	if retryAfter > 0 {
+		return &LoginLockedError{RetryAfter: retryAfter}
+	}
+	return ErrInvalidCredentials
+}
+
+func (s *Service) loginRetryAfter(username string, now time.Time) (time.Duration, error) {
+	var failedAttempts, lockoutStage int
+	var lockoutUntil sql.NullTime
+	err := s.db.QueryRow(`
+		SELECT failed_attempts, lockout_stage, lockout_until
+		FROM login_attempts
+		WHERE username = ?
+	`, username).Scan(&failedAttempts, &lockoutStage, &lockoutUntil)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("load login lockout: %w", err)
+	}
+	if !lockoutUntil.Valid {
+		return 0, nil
+	}
+	if lockoutUntil.Time.After(now) {
+		return lockoutUntil.Time.Sub(now), nil
+	}
+	if _, err := s.db.Exec(`
+		UPDATE login_attempts
+		SET failed_attempts = 0, lockout_until = NULL
+		WHERE username = ?
+	`, username); err != nil {
+		return 0, fmt.Errorf("expire login lockout: %w", err)
+	}
+	return 0, nil
+}
+
+func (s *Service) recordFailedLogin(username string, now time.Time) (time.Duration, error) {
+	var failedAttempts, lockoutStage int
+	err := s.db.QueryRow(`
+		SELECT failed_attempts, lockout_stage
+		FROM login_attempts
+		WHERE username = ?
+	`, username).Scan(&failedAttempts, &lockoutStage)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, fmt.Errorf("load failed login attempts: %w", err)
+	}
+	failedAttempts++
+	limit := repeatedLoginFailureLimit
+	lockoutDuration := repeatedLoginLockoutDuration
+	if lockoutStage == 0 {
+		limit = initialLoginFailureLimit
+		lockoutDuration = initialLoginLockoutDuration
+	}
+
+	if failedAttempts >= limit {
+		lockoutUntil := now.Add(lockoutDuration)
+		_, err := s.db.Exec(`
+			INSERT INTO login_attempts (username, failed_attempts, lockout_stage, lockout_until)
+			VALUES (?, 0, ?, ?)
+			ON CONFLICT(username) DO UPDATE SET
+				failed_attempts = 0,
+				lockout_stage = excluded.lockout_stage,
+				lockout_until = excluded.lockout_until
+		`, username, lockoutStage+1, lockoutUntil)
+		if err != nil {
+			return 0, fmt.Errorf("lock account after failed login attempts: %w", err)
+		}
+		return lockoutDuration, nil
+	}
+
+	_, err = s.db.Exec(`
+		INSERT INTO login_attempts (username, failed_attempts, lockout_stage)
+		VALUES (?, ?, ?)
+		ON CONFLICT(username) DO UPDATE SET
+			failed_attempts = excluded.failed_attempts,
+			lockout_stage = excluded.lockout_stage
+	`, username, failedAttempts, lockoutStage)
+	if err != nil {
+		return 0, fmt.Errorf("record failed login attempt: %w", err)
+	}
+	return 0, nil
 }
 
 func (s *Service) Logout(w http.ResponseWriter, r *http.Request) {
@@ -573,11 +710,25 @@ func (s *Service) LoginPage() http.HandlerFunc {
 			username := strings.TrimSpace(r.FormValue("username"))
 			password := r.FormValue("password")
 			if err := s.Login(w, r, username, password); err != nil {
-				w.WriteHeader(http.StatusUnauthorized)
 				errorData := pageData
-				errorData.Error = "Invalid username or password."
+				var lockedError *LoginLockedError
+				switch {
+				case errors.As(err, &lockedError):
+					retryAfter := int((lockedError.RetryAfter + time.Second - 1) / time.Second)
+					w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
+					w.WriteHeader(http.StatusTooManyRequests)
+					errorData.LoginLocked = true
+					errorData.LockoutSeconds = retryAfter
+				case errors.Is(err, ErrInvalidCredentials):
+					w.WriteHeader(http.StatusUnauthorized)
+					errorData.Error = "Invalid username or password."
+				default:
+					log.Printf("sign in user %q: %v", username, err)
+					http.Error(w, "Could not sign in. Please try again later.", http.StatusInternalServerError)
+					return
+				}
 				if executeErr := tmpl.Execute(w, errorData); executeErr != nil {
-					http.Error(w, "Could not render login page.", http.StatusInternalServerError)
+					log.Printf("render sign-in error page: %v", executeErr)
 				}
 				return
 			}
@@ -669,8 +820,11 @@ func (s *Service) userWithPasswordHash(username string) (User, string, error) {
 		`SELECT id, username, password_hash FROM users WHERE username = ?`,
 		username,
 	).Scan(&user.ID, &user.Username, &passwordHash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return User{}, "", ErrInvalidCredentials
+	}
 	if err != nil {
-		return User{}, "", errors.New("invalid credentials")
+		return User{}, "", fmt.Errorf("load user credentials: %w", err)
 	}
 	return user, passwordHash, nil
 }

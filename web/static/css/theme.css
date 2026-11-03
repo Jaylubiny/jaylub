@@ -369,6 +369,20 @@ button[type="button"]:not(.profile-button):hover {
   background: rgba(139, 92, 246, 0.16) !important;
 }
 
+body.login-page .login-panel .create-account-button {
+  color: var(--theme-purple-2) !important;
+  background: transparent !important;
+  border-color: var(--theme-purple) !important;
+  box-shadow: none !important;
+}
+
+body.login-page .login-panel .create-account-button:hover {
+  color: #fff !important;
+  background: rgba(139, 92, 246, 0.12) !important;
+  border-color: var(--theme-purple-2) !important;
+  box-shadow: 0 0 18px rgba(139, 92, 246, 0.18) !important;
+}
+
 .user-dropdown button[type="submit"] {
   color: var(--theme-text) !important;
   background: rgba(17, 17, 17, 0.88) !important;
