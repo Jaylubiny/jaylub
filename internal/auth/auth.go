@@ -752,10 +752,10 @@ func (s *Service) LoginPage() http.HandlerFunc {
 
 func defaultLoginPageData() loginPageData {
 	return loginPageData{
-		Title:           "Sign in to Jaylub",
+		Title:           "login",
 		MetaDescription: "Sign in to your Jaylub account to access the community chat, games, and member features.",
 		CanonicalURL:    "https://jaylub.com/login",
-		OpenGraphTitle:  "Sign in to Jaylub",
+		OpenGraphTitle:  "login",
 		OpenGraphDesc:   "Sign in to your Jaylub account to access the community chat, games, and member features.",
 		OpenGraphType:   "website",
 		OpenGraphURL:    "https://jaylub.com/login",

@@ -15,7 +15,7 @@ func UseStatsDB(db *sql.DB) {
 
 var (
 	Home = renderer.PageWithSEO("home", views.SEOData{
-		Title:               "Jaylubiny | Optimization and Task Automation",
+		Title:               "home",
 		Description:         "Jaylubiny focuses on optimizing workflows and automating tasks for other people. Jaylub, a fictional stinky character, is the website's mascot. Jaylubiny does not own the Twitch channel named Jaylub. The site also provides email, community chat, documentation, and project tools.",
 		CanonicalURL:        "https://jaylub.com/",
 		OpenGraphType:       "website",
