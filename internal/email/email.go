@@ -2,9 +2,12 @@ package email
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -13,9 +16,12 @@ import (
 	"log"
 	"net/http"
 	"net/mail"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -76,6 +82,10 @@ type Sender interface {
 type Service struct {
 	db            *sql.DB
 	sender        Sender
+	resendAPIKey  string
+	resendClient  *http.Client
+	resendAPIBase string
+	inboundMu     sync.Mutex
 	webhookSecret string
 	attachmentDir string
 }
@@ -91,9 +101,13 @@ func New(dbPath, resendAPIKey, _ string, webhookSecret string) (*Service, error)
 	}
 	db.SetMaxOpenConns(1)
 
+	resendClient := &http.Client{Timeout: 20 * time.Second}
 	service := &Service{
 		db:            db,
-		sender:        resendSender{apiKey: resendAPIKey, client: &http.Client{Timeout: 20 * time.Second}},
+		sender:        resendSender{apiKey: resendAPIKey, client: resendClient},
+		resendAPIKey:  resendAPIKey,
+		resendClient:  resendClient,
+		resendAPIBase: "https://api.resend.com",
 		webhookSecret: webhookSecret,
 		attachmentDir: filepath.Join(filepath.Dir(dbPath), "email-attachments"),
 	}
@@ -176,7 +190,11 @@ func (s *Service) initSchema() error {
 			mime_type TEXT NOT NULL,
 			FOREIGN KEY (email_id) REFERENCES emails(id) ON DELETE CASCADE
 		);
-		CREATE INDEX IF NOT EXISTS idx_email_attachments_email_id ON email_attachments(email_id)
+		CREATE INDEX IF NOT EXISTS idx_email_attachments_email_id ON email_attachments(email_id);
+		CREATE TABLE IF NOT EXISTS inbound_email_receipts (
+			provider_email_id TEXT PRIMARY KEY,
+			processed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
 	`)
 	return err
 }
@@ -598,6 +616,295 @@ func affected(result sql.Result, err error) error {
 
 func (s *Service) ValidateSecret(secret string) bool {
 	return s.webhookSecret != "" && hmac.Equal([]byte(s.webhookSecret), []byte(secret))
+}
+
+func (s *Service) ValidateResendWebhook(body []byte, headers http.Header) bool {
+	secret := strings.TrimPrefix(s.webhookSecret, "whsec_")
+	key, err := base64.StdEncoding.DecodeString(secret)
+	if err != nil {
+		key, err = base64.RawStdEncoding.DecodeString(secret)
+	}
+	if err != nil || len(key) == 0 {
+		return false
+	}
+
+	id := headers.Get("svix-id")
+	timestamp := headers.Get("svix-timestamp")
+	signature := headers.Get("svix-signature")
+	unixTimestamp, err := strconv.ParseInt(timestamp, 10, 64)
+	if err != nil || id == "" || signature == "" || time.Since(time.Unix(unixTimestamp, 0)) > 5*time.Minute ||
+		time.Until(time.Unix(unixTimestamp, 0)) > 5*time.Minute {
+		return false
+	}
+
+	mac := hmac.New(sha256.New, key)
+	_, _ = fmt.Fprintf(mac, "%s.%s.%s", id, timestamp, body)
+	expected := mac.Sum(nil)
+	for _, candidate := range strings.Fields(signature) {
+		version, encoded, ok := strings.Cut(candidate, ",")
+		if !ok || version != "v1" {
+			continue
+		}
+		decoded, err := base64.StdEncoding.DecodeString(encoded)
+		if err == nil && hmac.Equal(decoded, expected) {
+			return true
+		}
+	}
+	return false
+}
+
+type resendReceivedEmail struct {
+	From        string                     `json:"from"`
+	To          []string                   `json:"to"`
+	ReceivedFor []string                   `json:"received_for"`
+	Subject     string                     `json:"subject"`
+	Text        *string                    `json:"text"`
+	HTML        string                     `json:"html"`
+	Attachments []resendReceivedAttachment `json:"attachments"`
+}
+
+type resendReceivedAttachment struct {
+	ID          string `json:"id"`
+	Filename    string `json:"filename"`
+	ContentType string `json:"content_type"`
+	Size        int64  `json:"size"`
+}
+
+func (s *Service) SaveResendReceivedEmail(ctx context.Context, emailID string) error {
+	if strings.TrimSpace(s.resendAPIKey) == "" {
+		return errors.New("Resend API key is not configured for incoming email")
+	}
+	if emailID == "" || strings.ContainsAny(emailID, "/?#") {
+		return errors.New("received email ID is invalid")
+	}
+	s.inboundMu.Lock()
+	defer s.inboundMu.Unlock()
+
+	var exists int
+	err := s.db.QueryRow(`SELECT 1 FROM inbound_email_receipts WHERE provider_email_id = ?`, emailID).Scan(&exists)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("check whether received email was processed: %w", err)
+	}
+
+	var received resendReceivedEmail
+	if err := s.resendGET(ctx, "/emails/receiving/"+url.PathEscape(emailID), &received); err != nil {
+		return fmt.Errorf("retrieve received email: %w", err)
+	}
+	if received.From == "" {
+		return errors.New("received email has no sender")
+	}
+	recipients := mailboxRecipients(received.ReceivedFor, received.To)
+	if len(recipients) == 0 {
+		return errors.New("received email has no Jaylub mailbox recipient")
+	}
+
+	body := ""
+	if received.Text != nil {
+		body = *received.Text
+	} else {
+		body = received.HTML
+	}
+	attachments, err := s.fetchResendAttachments(ctx, emailID, received.Attachments)
+	if err != nil {
+		return err
+	}
+	return s.saveResendReceivedEmail(emailID, received.From, received.Subject, body, recipients, attachments)
+}
+
+func (s *Service) saveResendReceivedEmail(providerID, sender, subject, body string, recipients []string, attachments []IncomingAttachment) error {
+	storedPaths := make([][]string, len(recipients))
+	cleanup := func() {
+		for _, paths := range storedPaths {
+			for _, path := range paths {
+				if err := os.Remove(filepath.Join(s.attachmentDir, path)); err != nil && !errors.Is(err, os.ErrNotExist) {
+					log.Printf("remove incomplete Resend attachment %q: %v", path, err)
+				}
+			}
+		}
+	}
+	for i := range recipients {
+		for _, attachment := range attachments {
+			path, err := s.storeAttachment(attachment.Data)
+			if err != nil {
+				cleanup()
+				return fmt.Errorf("store received email attachment: %w", err)
+			}
+			storedPaths[i] = append(storedPaths[i], path)
+		}
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		cleanup()
+		return fmt.Errorf("begin Resend email save: %w", err)
+	}
+	defer tx.Rollback()
+
+	var exists int
+	err = tx.QueryRow(`SELECT 1 FROM inbound_email_receipts WHERE provider_email_id = ?`, providerID).Scan(&exists)
+	if err == nil {
+		cleanup()
+		return nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		cleanup()
+		return fmt.Errorf("check Resend email receipt: %w", err)
+	}
+
+	for recipientIndex, recipient := range recipients {
+		result, err := tx.Exec(`
+			INSERT INTO emails (sender, recipient, subject, body, folder, is_read)
+			VALUES (?, ?, ?, ?, 'inbox', 0)
+		`, sender, recipient, subject, body)
+		if err != nil {
+			cleanup()
+			return fmt.Errorf("save received email for %s: %w", recipient, err)
+		}
+		emailID, err := result.LastInsertId()
+		if err != nil {
+			cleanup()
+			return fmt.Errorf("get received email ID for %s: %w", recipient, err)
+		}
+		for attachmentIndex, attachment := range attachments {
+			if _, err := tx.Exec(`
+				INSERT INTO email_attachments (email_id, filename, storage_path, file_size, mime_type)
+				VALUES (?, ?, ?, ?, ?)
+			`, emailID, attachment.Filename, storedPaths[recipientIndex][attachmentIndex], attachment.Size, attachment.MIMEType); err != nil {
+				cleanup()
+				return fmt.Errorf("save received attachment for %s: %w", recipient, err)
+			}
+		}
+	}
+	if _, err := tx.Exec(`INSERT INTO inbound_email_receipts (provider_email_id) VALUES (?)`, providerID); err != nil {
+		cleanup()
+		return fmt.Errorf("record processed Resend email: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		cleanup()
+		return fmt.Errorf("commit Resend email save: %w", err)
+	}
+	return nil
+}
+
+func mailboxRecipients(groups ...[]string) []string {
+	seen := make(map[string]struct{})
+	var recipients []string
+	for _, group := range groups {
+		for _, rawAddress := range group {
+			address, err := mail.ParseAddress(strings.TrimSpace(rawAddress))
+			if err != nil {
+				continue
+			}
+			addressValue := strings.ToLower(address.Address)
+			if !strings.HasSuffix(addressValue, "@"+MailboxDomain) {
+				continue
+			}
+			if _, ok := seen[addressValue]; ok {
+				continue
+			}
+			seen[addressValue] = struct{}{}
+			recipients = append(recipients, addressValue)
+		}
+	}
+	return recipients
+}
+
+func (s *Service) fetchResendAttachments(ctx context.Context, emailID string, metadata []resendReceivedAttachment) ([]IncomingAttachment, error) {
+	if len(metadata) > MaxIncomingAttachments {
+		return nil, ErrTooManyAttachments
+	}
+
+	attachments := make([]IncomingAttachment, 0, len(metadata))
+	totalSize := int64(0)
+	for _, item := range metadata {
+		if item.ID == "" || item.Filename == "" || item.Size < 0 {
+			return nil, ErrInvalidAttachment
+		}
+		if item.Size > MaxIncomingAttachmentBytes || item.Size > MaxIncomingAttachmentsTotalBytes-totalSize {
+			return nil, ErrAttachmentTooLarge
+		}
+
+		var details struct {
+			DownloadURL string `json:"download_url"`
+		}
+		path := "/emails/receiving/" + url.PathEscape(emailID) + "/attachments/" + url.PathEscape(item.ID)
+		if err := s.resendGET(ctx, path, &details); err != nil {
+			return nil, fmt.Errorf("retrieve received email attachment: %w", err)
+		}
+		data, err := s.downloadResendAttachment(ctx, details.DownloadURL)
+		if err != nil {
+			return nil, err
+		}
+		if int64(len(data)) != item.Size {
+			return nil, ErrInvalidAttachment
+		}
+		attachments = append(attachments, IncomingAttachment{
+			Filename: item.Filename,
+			MIMEType: item.ContentType,
+			Size:     int64(len(data)),
+			Data:     data,
+		})
+		totalSize += int64(len(data))
+	}
+	return attachments, nil
+}
+
+func (s *Service) resendGET(ctx context.Context, path string, target any) error {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(s.resendAPIBase, "/")+path, nil)
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Authorization", "Bearer "+s.resendAPIKey)
+	response, err := s.resendClient.Do(request)
+	if err != nil {
+		return fmt.Errorf("Resend API request failed: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("Resend API returned HTTP %d", response.StatusCode)
+	}
+	const maxResendResponseBytes = 36 << 20
+	data, err := io.ReadAll(io.LimitReader(response.Body, maxResendResponseBytes+1))
+	if err != nil {
+		return fmt.Errorf("read Resend API response: %w", err)
+	}
+	if len(data) > maxResendResponseBytes {
+		return errors.New("Resend API response exceeds the size limit")
+	}
+	if err := json.Unmarshal(data, target); err != nil {
+		return fmt.Errorf("decode Resend API response: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) downloadResendAttachment(ctx context.Context, downloadURL string) ([]byte, error) {
+	parsedURL, err := url.Parse(downloadURL)
+	if err != nil || parsedURL.Scheme != "https" || parsedURL.Hostname() != "inbound-cdn.resend.com" {
+		return nil, errors.New("Resend attachment URL is invalid")
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, parsedURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	response, err := s.resendClient.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("download received email attachment: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("attachment download returned HTTP %d", response.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, MaxIncomingAttachmentBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read received email attachment: %w", err)
+	}
+	if int64(len(data)) > MaxIncomingAttachmentBytes {
+		return nil, ErrAttachmentTooLarge
+	}
+	return data, nil
 }
 
 type resendSender struct {

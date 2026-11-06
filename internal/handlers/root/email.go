@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -47,17 +48,54 @@ func (h *EmailHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	if !requireEmailMethod(w, r, http.MethodPost) {
 		return
 	}
-	if !h.emailService.ValidateSecret(r.Header.Get("X-Secret-Auth")) {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
 		return
 	}
-	var payload IncomingPayload
-	if err := decodeJSON(w, r, &payload, 36<<20); err != nil {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 36<<20))
+	if err != nil {
 		var maxBytesError *http.MaxBytesError
 		if errors.As(err, &maxBytesError) {
 			http.Error(w, "Email payload exceeds the allowed size", http.StatusRequestEntityTooLarge)
 			return
 		}
+		http.Error(w, "Invalid email payload", http.StatusBadRequest)
+		return
+	}
+	if h.emailService.ValidateResendWebhook(body, r.Header) {
+		var event struct {
+			Type string `json:"type"`
+			Data struct {
+				EmailID string `json:"email_id"`
+			} `json:"data"`
+		}
+		if err := decodeJSONPayload(body, &event, false); err != nil {
+			http.Error(w, "Invalid email event", http.StatusBadRequest)
+			return
+		}
+		if event.Type != "email.received" {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if event.Data.EmailID == "" {
+			http.Error(w, "Received email ID is required", http.StatusBadRequest)
+			return
+		}
+		if err := h.emailService.SaveResendReceivedEmail(r.Context(), event.Data.EmailID); err != nil {
+			log.Printf("process Resend inbound email: %v", err)
+			http.Error(w, "Unable to save incoming email", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		return
+	}
+	if !h.emailService.ValidateSecret(r.Header.Get("X-Secret-Auth")) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var payload IncomingPayload
+	if err := decodeJSONPayload(body, &payload, true); err != nil {
 		http.Error(w, "Invalid email payload", http.StatusBadRequest)
 		return
 	}
@@ -348,8 +386,18 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any, maxBytes int
 		return errors.New("content type must be application/json")
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return err
+	}
+	return decodeJSONPayload(body, target, true)
+}
+
+func decodeJSONPayload(body []byte, target any, disallowUnknownFields bool) error {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	if disallowUnknownFields {
+		decoder.DisallowUnknownFields()
+	}
 	if err := decoder.Decode(target); err != nil {
 		return err
 	}
